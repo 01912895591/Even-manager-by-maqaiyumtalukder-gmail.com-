@@ -1,0 +1,6 @@
+{
+  "name": "Event Manager",
+  "description": "Plan personal and family events, track budgets, and manage guest lists.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
