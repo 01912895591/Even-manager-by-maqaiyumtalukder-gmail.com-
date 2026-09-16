@@ -82,6 +82,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import com.example.data.model.EventEntity
 import com.example.ui.components.getCategoryColor
 import com.example.ui.components.getCategoryIcon
 import com.example.ui.components.parseColorHex
@@ -116,31 +117,37 @@ fun NewEventScreen(
     description: String,
     dateTimeMillis: Long
   ) -> Unit,
+  initialEvent: EventEntity? = null,
   defaultCurrency: String = "৳",
   language: String = "en",
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
-  var title by remember { mutableStateOf("") }
+  val isEditMode = initialEvent != null
+  var title by remember { mutableStateOf(initialEvent?.title ?: "") }
   var titleError by remember { mutableStateOf(false) }
-  var selectedCategory by remember { mutableStateOf("Wedding") }
+  var selectedCategory by remember { mutableStateOf(initialEvent?.category ?: "Wedding") }
 
   // Dynamic calendar initialization
   val calendar = remember {
     Calendar.getInstance().apply {
-      add(Calendar.DAY_OF_MONTH, 7)
-      set(Calendar.HOUR_OF_DAY, 19)
-      set(Calendar.MINUTE, 0)
-      set(Calendar.SECOND, 0)
-      set(Calendar.MILLISECOND, 0)
+      if (initialEvent != null && initialEvent.dateTimeMillis > 0) {
+        timeInMillis = initialEvent.dateTimeMillis
+      } else {
+        add(Calendar.DAY_OF_MONTH, 7)
+        set(Calendar.HOUR_OF_DAY, 19)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+      }
     }
   }
   val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
   val timeFormatter = remember { SimpleDateFormat("hh:mm a", Locale.US) }
 
-  var selectedDateTimeMillis by remember { mutableStateOf(calendar.timeInMillis) }
-  var date by remember { mutableStateOf(dateFormatter.format(calendar.time)) }
-  var time by remember { mutableStateOf(timeFormatter.format(calendar.time)) }
+  var selectedDateTimeMillis by remember { mutableStateOf(initialEvent?.dateTimeMillis ?: calendar.timeInMillis) }
+  var date by remember { mutableStateOf(initialEvent?.dateFormatted?.ifBlank { null } ?: dateFormatter.format(calendar.time)) }
+  var time by remember { mutableStateOf(initialEvent?.timeFormatted?.ifBlank { null } ?: timeFormatter.format(calendar.time)) }
 
   val datePickerDialog = remember(context) {
     DatePickerDialog(
@@ -173,14 +180,14 @@ fun NewEventScreen(
     )
   }
 
-  var location by remember { mutableStateOf("") }
-  var budgetText by remember { mutableStateOf("") }
-  var description by remember { mutableStateOf("") }
+  var location by remember { mutableStateOf(initialEvent?.location ?: "") }
+  var budgetText by remember { mutableStateOf(if (initialEvent != null && initialEvent.plannedBudget > 0) initialEvent.plannedBudget.toLong().toString() else "") }
+  var description by remember { mutableStateOf(initialEvent?.description ?: "") }
 
   // Cover photo & Theme state
-  var selectedCoverImageUri by remember { mutableStateOf<Uri?>(null) }
-  var selectedThemeHex by remember { mutableStateOf("#1F6E52") }
-  var selectedThemeName by remember { mutableStateOf("Royal Emerald") }
+  var selectedCoverImageUri by remember { mutableStateOf<Uri?>(initialEvent?.coverPhotoUri?.let { Uri.parse(it) }) }
+  var selectedThemeHex by remember { mutableStateOf(initialEvent?.coverPhotoColorHex ?: "#1F6E52") }
+  var selectedThemeName by remember { mutableStateOf(if (initialEvent?.coverPhotoUri != null) "Custom Gallery Photo" else "Royal Emerald") }
   var showCoverThemePicker by remember { mutableStateOf(false) }
 
   // System photo picker with persistent local file copy
@@ -247,7 +254,7 @@ fun NewEventScreen(
         Spacer(modifier = Modifier.width(8.dp))
 
         Text(
-          text = AppStrings.get("new_event", language),
+          text = if (isEditMode) (if (language == "bn") "ইভেন্ট সম্পাদনা" else "Edit Event") else AppStrings.get("new_event", language),
           style = MaterialTheme.typography.titleLarge,
           fontFamily = FontFamily.Serif,
           fontWeight = FontWeight.Bold,
@@ -668,7 +675,7 @@ fun NewEventScreen(
           )
         ) {
           Text(
-            text = AppStrings.get("create_event_button", language),
+            text = if (isEditMode) (if (language == "bn") "পরিবর্তন সংরক্ষণ করুন" else "Save Changes") else AppStrings.get("create_event_button", language),
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold
           )

@@ -68,6 +68,7 @@ object Routes {
   const val EVENTS = "events"
   const val EVENT_DETAIL = "event_detail"
   const val NEW_EVENT = "new_event"
+  const val EDIT_EVENT = "edit_event"
   const val ADD_GUESTS = "add_guests"
   const val BUDGET = "budget"
   const val CONTACTS = "contacts"
@@ -171,10 +172,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
     Routes.SETTINGS
   )
 
-  LaunchedEffect(currentUser?.isLoggedIn) {
+  LaunchedEffect(currentUser?.isLoggedIn, currentRoute) {
     if (currentUser?.isLoggedIn == true && (currentRoute == Routes.SIGN_IN || currentRoute == Routes.SIGN_UP)) {
       navController.navigate(Routes.DASHBOARD) {
-        popUpTo(0) { inclusive = true }
+        popUpTo(Routes.SIGN_IN) { inclusive = true }
+        launchSingleTop = true
       }
     }
   }
@@ -251,7 +253,8 @@ fun EventManagerApp(viewModel: EventViewModel) {
               onSuccess = {
                 onSuccess()
                 navController.navigate(Routes.DASHBOARD) {
-                  popUpTo(0) { inclusive = true }
+                  popUpTo(Routes.SIGN_IN) { inclusive = true }
+                  launchSingleTop = true
                 }
               },
               onError = { errorMsg ->
@@ -259,10 +262,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
               }
             )
           },
-          onGoogleSignInConfirmed = { name, email ->
-            viewModel.signInWithGoogle(name, email) {
+          onGoogleSignInConfirmed = { name, email, photoUrl ->
+            viewModel.signInWithGoogle(name, email, photoUrl) {
               navController.navigate(Routes.DASHBOARD) {
-                popUpTo(0) { inclusive = true }
+                popUpTo(Routes.SIGN_IN) { inclusive = true }
+                launchSingleTop = true
               }
             }
           },
@@ -284,6 +288,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onNavigateToSignUp = {
             navController.navigate(Routes.SIGN_UP)
           },
+          googleWebClientId = settings.googleWebClientId,
+          autoLoginEnabled = settings.autoLoginWithGoogleEnabled,
+          onSaveGoogleWebClientId = { newId ->
+            viewModel.updateGoogleWebClientId(newId)
+          },
           language = settings.language
         )
       }
@@ -299,7 +308,8 @@ fun EventManagerApp(viewModel: EventViewModel) {
               onSuccess = {
                 onSuccess()
                 navController.navigate(Routes.DASHBOARD) {
-                  popUpTo(0) { inclusive = true }
+                  popUpTo(Routes.SIGN_IN) { inclusive = true }
+                  launchSingleTop = true
                 }
               },
               onError = { errorMsg ->
@@ -307,10 +317,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
               }
             )
           },
-          onGoogleSignInConfirmed = { name, email ->
-            viewModel.signInWithGoogle(name, email) {
+          onGoogleSignInConfirmed = { name, email, photoUrl ->
+            viewModel.signInWithGoogle(name, email, photoUrl) {
               navController.navigate(Routes.DASHBOARD) {
-                popUpTo(0) { inclusive = true }
+                popUpTo(Routes.SIGN_IN) { inclusive = true }
+                launchSingleTop = true
               }
             }
           },
@@ -318,6 +329,10 @@ fun EventManagerApp(viewModel: EventViewModel) {
             navController.navigate(Routes.SIGN_IN) {
               popUpTo(Routes.SIGN_UP) { inclusive = true }
             }
+          },
+          googleWebClientId = settings.googleWebClientId,
+          onSaveGoogleWebClientId = { newId ->
+            viewModel.updateGoogleWebClientId(newId)
           },
           language = settings.language
         )
@@ -424,6 +439,24 @@ fun EventManagerApp(viewModel: EventViewModel) {
           },
           onNavigateToBudget = {
             navController.navigate(Routes.BUDGET)
+          },
+          onEditEvent = {
+            navController.navigate(Routes.EDIT_EVENT)
+          },
+          onUpdateContact = { contact ->
+            viewModel.updateContact(contact)
+          },
+          onAddVendorToEvent = { name, phone, note ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.addContact(name, phone, "Vendor", note, eventId)
+          },
+          onRemoveVendorFromEvent = { contactId ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.removeGuestFromEvent(eventId, contactId)
+          },
+          onLinkContactToEvent = { contactId ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.toggleGuestForEvent(eventId, contactId, false)
           }
         )
       }
@@ -455,6 +488,40 @@ fun EventManagerApp(viewModel: EventViewModel) {
         )
       }
 
+      // Edit Event Screen
+      composable(Routes.EDIT_EVENT) {
+        val currentEvent = selectedEvent
+        NewEventScreen(
+          initialEvent = currentEvent,
+          onClose = { navController.popBackStack() },
+          onCreateEvent = { title, category, colorHex, coverUri, date, time, location, budget, desc, dateTimeMillis ->
+            if (currentEvent != null) {
+              viewModel.updateEvent(
+                eventId = currentEvent.id,
+                title = title,
+                category = category,
+                colorHex = colorHex,
+                coverPhotoUri = coverUri,
+                dateFormatted = date,
+                timeFormatted = time,
+                location = location,
+                budget = budget,
+                currency = settings.defaultCurrency,
+                description = desc,
+                dateTimeMillis = dateTimeMillis,
+                onSuccess = {
+                  navController.popBackStack()
+                }
+              )
+            } else {
+              navController.popBackStack()
+            }
+          },
+          defaultCurrency = settings.defaultCurrency,
+          language = settings.language
+        )
+      }
+
       // 7. Add Guests to Event Screen
       composable(Routes.ADD_GUESTS) {
         val currentEvent = selectedEvent
@@ -473,7 +540,7 @@ fun EventManagerApp(viewModel: EventViewModel) {
             }
           },
           onAddNewContact = { name, phone, rel, note ->
-            viewModel.addContact(name, phone, rel, note)
+            viewModel.addContact(name, phone, rel, note, currentEvent?.id)
           },
           onImportPhoneContacts = { list ->
             viewModel.importPhoneContacts(list, currentEvent?.id)
@@ -514,6 +581,9 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onAddContact = { name, phone, relation, note ->
             viewModel.addContact(name, phone, relation, note)
           },
+          onUpdateContact = { contact ->
+            viewModel.updateContact(contact)
+          },
           onDeleteContact = { contact ->
             viewModel.deleteContact(contact)
           },
@@ -534,6 +604,8 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onUpdateCurrency = { curr -> viewModel.updateCurrency(curr) },
           onUpdateAccentColor = { colorHex -> viewModel.updateAccentColor(colorHex) },
           onToggleNotifications = { enabled -> viewModel.toggleNotifications(enabled) },
+          onUpdateGoogleWebClientId = { newId -> viewModel.updateGoogleWebClientId(newId) },
+          onToggleAutoLoginWithGoogle = { enabled -> viewModel.toggleAutoLoginWithGoogle(enabled) },
           onLogOut = {
             viewModel.logOut {
               navController.navigate(Routes.SIGN_IN) {

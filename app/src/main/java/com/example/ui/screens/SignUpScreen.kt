@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.accounts.AccountManager
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,7 +45,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -55,11 +53,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -70,6 +70,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.auth.GoogleAuthService
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.AccentGoldLight
 import com.example.ui.theme.BorderSubtle
@@ -77,6 +78,7 @@ import com.example.ui.theme.DeepPlum
 import com.example.ui.theme.PlumDark
 import com.example.ui.theme.TextMuted
 import com.example.ui.util.AppStrings
+import kotlinx.coroutines.launch
 
 enum class PasswordStrengthLevel(val label: String, val color: Color, val progress: Float) {
   NONE("", Color.Transparent, 0f),
@@ -102,11 +104,16 @@ fun evaluatePasswordStrength(password: String): PasswordStrengthLevel {
 @Composable
 fun SignUpScreen(
   onSignUpWithCredentials: (name: String, email: String, password: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
-  onGoogleSignInConfirmed: (name: String, email: String) -> Unit,
+  onGoogleSignInConfirmed: (name: String, email: String, photoUrl: String?) -> Unit,
   onNavigateToSignIn: () -> Unit,
+  googleWebClientId: String = "",
+  onSaveGoogleWebClientId: ((String) -> Unit)? = null,
   language: String = "en",
   modifier: Modifier = Modifier
 ) {
+  val context = LocalContext.current
+  val activity = context as? Activity
+  val coroutineScope = rememberCoroutineScope()
   val focusManager = LocalFocusManager.current
 
   var fullName by remember { mutableStateOf("") }
@@ -124,41 +131,33 @@ fun SignUpScreen(
   val animatedProgress by animateFloatAsState(targetValue = strength.progress, label = "strength_progress")
   val animatedColor by animateColorAsState(targetValue = strength.color, label = "strength_color")
 
-  // Real native Google OAuth / Account chooser launcher
-  val systemGoogleAccountLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.StartActivityForResult()
-  ) { result ->
-    isGoogleSubmitting = false
-    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-      val pickedAccount = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-      if (!pickedAccount.isNullOrBlank()) {
-        val derivedName = pickedAccount.substringBefore("@")
-          .replace(".", " ")
-          .split(" ")
-          .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
-        onGoogleSignInConfirmed(derivedName, pickedAccount)
-      }
-    }
-  }
-
   fun triggerGoogleSignUp() {
     focusManager.clearFocus()
     errorMessage = null
+    val activeClientId = GoogleAuthService.getActiveClientId(googleWebClientId)
+
+    if (activity == null) {
+      errorMessage = "Google Sign-In is unavailable on this device."
+      return
+    }
+
+    if (activeClientId.isNullOrBlank()) {
+      errorMessage = "Google Web Client ID is not configured."
+      return
+    }
+
     isGoogleSubmitting = true
-    try {
-      val intent = AccountManager.newChooseAccountIntent(
-        null,
-        null,
-        arrayOf("com.google"),
-        null,
-        null,
-        null,
-        null
-      )
-      systemGoogleAccountLauncher.launch(intent)
-    } catch (e: Exception) {
+    coroutineScope.launch {
+      val result = GoogleAuthService.signInWithGoogleCredentialManager(activity, activeClientId)
       isGoogleSubmitting = false
-      errorMessage = "Google Sign-In is not supported or account picker is unavailable on this device."
+      result.onSuccess { user ->
+        onGoogleSignInConfirmed(user.displayName, user.email, user.photoUrl)
+      }.onFailure { err ->
+        val msg = err.message ?: ""
+        if (!msg.contains("cancelled", ignoreCase = true)) {
+          errorMessage = "Google Sign-In failed: $msg"
+        }
+      }
     }
   }
 
@@ -555,12 +554,14 @@ fun SignUpScreen(
 
       // Divider
       Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
         HorizontalDivider(modifier = Modifier.weight(1f), color = BorderSubtle)
         Text(
-          text = "  or sign up with  ",
+          text = if (language == "bn") "  অথবা  " else "  or continue with  ",
           style = MaterialTheme.typography.bodySmall,
           color = TextMuted,
           fontSize = 12.sp
@@ -568,80 +569,97 @@ fun SignUpScreen(
         HorizontalDivider(modifier = Modifier.weight(1f), color = BorderSubtle)
       }
 
-      Spacer(modifier = Modifier.height(12.dp))
+      Spacer(modifier = Modifier.height(14.dp))
 
-      // Native Google Sign-Up Button
-      OutlinedButton(
-        onClick = { triggerGoogleSignUp() },
-        enabled = !isSubmitting && !isGoogleSubmitting,
+      // Sleek, Beautiful Google Sign-Up Button
+      Surface(
         modifier = Modifier
           .fillMaxWidth()
-          .height(48.dp)
+          .height(50.dp)
+          .clip(RoundedCornerShape(12.dp))
+          .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+          .clickable(enabled = !isSubmitting && !isGoogleSubmitting) {
+            triggerGoogleSignUp()
+          }
           .testTag("signup_google_button"),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-          containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
       ) {
-        if (isGoogleSubmitting) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(20.dp),
-            color = DeepPlum,
-            strokeWidth = 2.dp
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text(
-            text = "Connecting with Google...",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = DeepPlum
-          )
-        } else {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-          ) {
-            Box(
-              modifier = Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFEA4335)),
-              contentAlignment = Alignment.Center
+        Box(
+          modifier = Modifier.fillMaxSize(),
+          contentAlignment = Alignment.Center
+        ) {
+          if (isGoogleSubmitting) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
             ) {
-              Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+              CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = DeepPlum,
+                strokeWidth = 2.dp
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Text(
+                text = if (language == "bn") "সংযুক্ত হচ্ছে..." else "Signing in...",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = DeepPlum
+              )
             }
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-              text = "Continue with Google",
-              style = MaterialTheme.typography.bodyMedium,
-              fontWeight = FontWeight.SemiBold,
-              color = MaterialTheme.colorScheme.onSurface,
-              fontSize = 13.sp
-            )
+          } else {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
+            ) {
+              // Stylized Google 'G' Mark
+              Surface(
+                modifier = Modifier.size(26.dp),
+                shape = CircleShape,
+                color = Color(0xFFF8F9FA),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
+              ) {
+                Box(contentAlignment = Alignment.Center) {
+                  Text(
+                    text = "G",
+                    color = Color(0xFF4285F4),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Text(
+                text = if (language == "bn") "Google দিয়ে চালিয়ে যান" else "Continue with Google",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp
+              )
+            }
           }
         }
       }
 
-      Spacer(modifier = Modifier.height(14.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // Single, Clean Link to Sign In
       Row(
         modifier = Modifier
           .fillMaxWidth()
           .clickable { onNavigateToSignIn() }
-          .padding(vertical = 8.dp),
+          .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
       ) {
         Text(
-          text = "Already have an account? ",
+          text = if (language == "bn") "ইতিমধ্যে অ্যাকাউন্ট আছে? " else "Already have an account? ",
           style = MaterialTheme.typography.bodySmall,
           color = TextMuted,
           fontSize = 13.sp
         )
         Text(
-          text = AppStrings.get("sign_in", language),
+          text = if (language == "bn") "সাইন-ইন করুন" else AppStrings.get("sign_in", language),
           style = MaterialTheme.typography.bodySmall,
           fontWeight = FontWeight.Bold,
           color = DeepPlum,

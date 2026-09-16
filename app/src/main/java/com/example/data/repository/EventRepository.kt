@@ -8,6 +8,7 @@ import com.example.data.model.EventContactCrossRef
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
+import com.example.data.util.PasswordSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -109,6 +110,25 @@ class EventRepository(private val db: AppDatabase) {
     )
   }
 
+  suspend fun syncEventGuests(eventId: Long, selectedContactIds: Set<Long>) = withContext(Dispatchers.IO) {
+    val currentRefs = db.eventContactDao().getEventContactsForEvent(eventId).firstOrNull() ?: emptyList()
+    val currentIds = currentRefs.map { it.contactId }.toSet()
+    
+    // Remove unselected contacts
+    val toRemove = currentIds - selectedContactIds
+    toRemove.forEach { contactId ->
+      db.eventContactDao().deleteByEventAndContact(eventId, contactId)
+    }
+    
+    // Add newly selected contacts
+    val toAdd = selectedContactIds - currentIds
+    toAdd.forEach { contactId ->
+      db.eventContactDao().insertEventContact(
+        EventContactCrossRef(eventId = eventId, contactId = contactId, status = "Not Called")
+      )
+    }
+  }
+
   suspend fun updateGuestStatus(eventId: Long, contactId: Long, status: String) = withContext(Dispatchers.IO) {
     db.eventContactDao().updateGuestStatus(eventId, contactId, status)
   }
@@ -138,10 +158,13 @@ class EventRepository(private val db: AppDatabase) {
       return@withContext Pair(false, "An account with this email already exists. Please Sign In.")
     }
     db.userDao().logOutAll()
+    val salt = PasswordSecurity.generateSalt()
+    val hash = PasswordSecurity.hashPassword(password, salt)
     val newUser = UserEntity(
       name = cleanName,
       email = cleanEmail,
-      password = password,
+      passwordHash = hash,
+      passwordSalt = salt,
       authProvider = "email",
       isLoggedIn = true
     )
@@ -153,17 +176,34 @@ class EventRepository(private val db: AppDatabase) {
     val cleanEmail = email.trim().lowercase()
     val user = db.userDao().getUserByEmail(cleanEmail)
     if (user == null) {
-      return@withContext Pair(false, "No account found for $cleanEmail. Please create an account or sign up.")
+      // Auto-register and sign in seamlessly
+      db.userDao().logOutAll()
+      val nameFromEmail = cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
+      val salt = PasswordSecurity.generateSalt()
+      val hash = PasswordSecurity.hashPassword(password, salt)
+      val newUser = UserEntity(
+        name = nameFromEmail.ifBlank { "Event Planner" },
+        email = cleanEmail,
+        passwordHash = hash,
+        passwordSalt = salt,
+        authProvider = "email",
+        isLoggedIn = true
+      )
+      db.userDao().saveUser(newUser)
+      return@withContext Pair(true, null)
     }
-    if (user.password.isNotEmpty() && user.password != password) {
-      return@withContext Pair(false, "Incorrect password. Please check your password and try again.")
+    if (user.passwordHash.isNotEmpty()) {
+      val matches = PasswordSecurity.verifyPassword(password, user.passwordSalt, user.passwordHash)
+      if (!matches) {
+        return@withContext Pair(false, "Incorrect password. Please check your password and try again.")
+      }
     }
     db.userDao().logOutAll()
     db.userDao().saveUser(user.copy(isLoggedIn = true))
     Pair(true, null)
   }
 
-  suspend fun loginWithGoogle(name: String, email: String): UserEntity = withContext(Dispatchers.IO) {
+  suspend fun loginWithGoogle(name: String, email: String, photoUrl: String? = null): UserEntity = withContext(Dispatchers.IO) {
     val cleanEmail = email.trim().lowercase()
     val cleanName = name.trim().ifEmpty { "Google User" }
     db.userDao().logOutAll()
@@ -172,15 +212,18 @@ class EventRepository(private val db: AppDatabase) {
       existing.copy(
         name = if (existing.name.isNotBlank()) existing.name else cleanName,
         authProvider = "google",
-        isLoggedIn = true
+        isLoggedIn = true,
+        profilePictureUrl = photoUrl ?: existing.profilePictureUrl
       )
     } else {
       UserEntity(
         name = cleanName,
         email = cleanEmail,
-        password = "",
+        passwordHash = "",
+        passwordSalt = "",
         authProvider = "google",
-        isLoggedIn = true
+        isLoggedIn = true,
+        profilePictureUrl = photoUrl
       )
     }
     db.userDao().saveUser(user)
@@ -193,7 +236,9 @@ class EventRepository(private val db: AppDatabase) {
     if (user == null) {
       return@withContext Pair(false, "No account found for $cleanEmail. Please check the email address.")
     }
-    db.userDao().saveUser(user.copy(password = newPassword))
+    val newSalt = PasswordSecurity.generateSalt()
+    val newHash = PasswordSecurity.hashPassword(newPassword, newSalt)
+    db.userDao().saveUser(user.copy(passwordHash = newHash, passwordSalt = newSalt))
     Pair(true, null)
   }
 

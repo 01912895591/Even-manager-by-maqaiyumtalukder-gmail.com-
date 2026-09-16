@@ -404,12 +404,12 @@ fun EventCard(
         if (onDeleteClick != null) {
           Surface(
             modifier = Modifier
-              .size(36.dp)
+              .size(38.dp)
               .clip(CircleShape)
-              .border(1.dp, DangerRed.copy(alpha = 0.35f), CircleShape)
+              .border(1.dp, DangerRed.copy(alpha = 0.4f), CircleShape)
               .clickable { onDeleteClick() }
               .testTag("event_delete_button_${event.id}"),
-            color = DangerRed.copy(alpha = 0.08f)
+            color = DangerRed.copy(alpha = 0.1f)
           ) {
             Box(
               contentAlignment = Alignment.Center,
@@ -419,7 +419,7 @@ fun EventCard(
                 imageVector = Icons.Default.Delete,
                 contentDescription = "Delete event",
                 tint = DangerRed,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(19.dp)
               )
             }
           }

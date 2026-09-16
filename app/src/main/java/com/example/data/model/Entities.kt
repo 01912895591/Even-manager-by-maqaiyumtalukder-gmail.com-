@@ -10,10 +10,14 @@ data class UserEntity(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,
   val name: String,
   val email: String,
-  val password: String = "",
+  val passwordHash: String = "",
+  val passwordSalt: String = "",
   val authProvider: String = "email",
-  val isLoggedIn: Boolean = false
-)
+  val isLoggedIn: Boolean = false,
+  val profilePictureUrl: String? = null
+) {
+  val password: String get() = passwordHash
+}
 
 @Entity(tableName = "events")
 data class EventEntity(
@@ -120,5 +124,7 @@ data class AppSettingsEntity(
   val isDarkMode: Boolean = false,
   val accentColorHex: String = "#D4AF6A",
   val defaultCurrency: String = "৳",
-  val notificationsEnabled: Boolean = true
+  val notificationsEnabled: Boolean = true,
+  val googleWebClientId: String = "755771767239-uhtf0nttaosh42kcs3g90hmq9enqj0q1.apps.googleusercontent.com",
+  val autoLoginWithGoogleEnabled: Boolean = true
 )

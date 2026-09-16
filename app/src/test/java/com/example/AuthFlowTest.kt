@@ -68,6 +68,9 @@ class AuthFlowTest {
     assertEquals(testEmail, registeredUser?.email)
     assertEquals("email", registeredUser?.authProvider)
     assertTrue(registeredUser?.isLoggedIn == true)
+    assertTrue("Password must be hashed, not stored in plaintext", registeredUser?.passwordHash != initialPassword)
+    assertTrue("Password hash must not be empty", !registeredUser?.passwordHash.isNullOrEmpty())
+    assertTrue("Password salt must not be empty", !registeredUser?.passwordSalt.isNullOrEmpty())
 
     // 2. Sign Out
     repository.logOutUser()

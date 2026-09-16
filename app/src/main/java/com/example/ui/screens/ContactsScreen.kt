@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Search
@@ -98,6 +99,7 @@ fun ContactsScreen(
   selectedFilter: String,
   onFilterChange: (String) -> Unit,
   onAddContact: (name: String, phone: String, relation: String, note: String) -> Unit,
+  onUpdateContact: (ContactEntity) -> Unit = {},
   onDeleteContact: (ContactEntity) -> Unit,
   onImportPhoneContacts: (List<Pair<String, String>>) -> Unit = {},
   language: String = "en",
@@ -105,6 +107,7 @@ fun ContactsScreen(
 ) {
   val context = LocalContext.current
   var showAddDialog by remember { mutableStateOf(false) }
+  var contactToEdit by remember { mutableStateOf<ContactEntity?>(null) }
   var showPhoneContactsSheet by remember { mutableStateOf(false) }
 
   // Phone contacts state
@@ -473,6 +476,19 @@ fun ContactsScreen(
                     )
                   }
 
+                  // Edit button
+                  IconButton(
+                    onClick = { contactToEdit = contact },
+                    modifier = Modifier.size(38.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.Edit,
+                      contentDescription = "Edit ${contact.name}",
+                      tint = DeepPlum,
+                      modifier = Modifier.size(20.dp)
+                    )
+                  }
+
                   // Delete button
                   IconButton(
                     onClick = { onDeleteContact(contact) },
@@ -808,6 +824,139 @@ fun ContactsScreen(
       },
       dismissButton = {
         TextButton(onClick = { showAddDialog = false }) {
+          Text("Cancel", color = TextMuted)
+        }
+      }
+    )
+  }
+
+  // Dialog for Editing an Existing Contact or Vendor
+  if (contactToEdit != null) {
+    val target = contactToEdit!!
+    var editName by remember(target) { mutableStateOf(target.name) }
+    var editPhone by remember(target) { mutableStateOf(target.phone) }
+    var editRelation by remember(target) { mutableStateOf(target.relation) }
+    var editNote by remember(target) { mutableStateOf(target.note) }
+    var editNameError by remember { mutableStateOf(false) }
+    var editPhoneError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+      onDismissRequest = { contactToEdit = null },
+      title = {
+        Text(
+          text = if (language == "bn") "তথ্য পরিবর্তন করুন" else "Edit Contact / Vendor",
+          style = MaterialTheme.typography.titleMedium,
+          fontFamily = FontFamily.Serif,
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+          OutlinedTextField(
+            value = editName,
+            onValueChange = {
+              editName = it
+              if (editNameError) editNameError = false
+            },
+            label = { Text("Full Name *") },
+            singleLine = true,
+            isError = editNameError,
+            supportingText = if (editNameError) {
+              { Text("Full name is required", color = MaterialTheme.colorScheme.error) }
+            } else null,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_contact_name_input")
+          )
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          OutlinedTextField(
+            value = editPhone,
+            onValueChange = {
+              editPhone = it
+              if (editPhoneError) editPhoneError = false
+            },
+            label = { Text("Phone Number *") },
+            singleLine = true,
+            isError = editPhoneError,
+            supportingText = if (editPhoneError) {
+              { Text("Phone number is required", color = MaterialTheme.colorScheme.error) }
+            } else null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_contact_phone_input")
+          )
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          Text(
+            text = "Category *",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            listOf("Vendor", "Family", "Friend", "Other").forEach { cat ->
+              val isCatSelected = editRelation.equals(cat, ignoreCase = true)
+              FilterChip(
+                selected = isCatSelected,
+                onClick = { editRelation = cat },
+                label = { Text(cat, fontSize = 11.sp) },
+                shape = RoundedCornerShape(16.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                  selectedContainerColor = DeepPlum,
+                  selectedLabelColor = Color.White
+                )
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          OutlinedTextField(
+            value = editNote,
+            onValueChange = { editNote = it },
+            label = { Text(if (editRelation.equals("Vendor", ignoreCase = true)) "Vendor Service / Note" else "Note (Optional)") },
+            placeholder = { Text(if (editRelation.equals("Vendor", ignoreCase = true)) "e.g. Photography, Catering, Stage Decor" else "e.g. Bride's Cousin") },
+            maxLines = 2,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_contact_note_input")
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            if (editName.isBlank()) {
+              editNameError = true
+              return@Button
+            }
+            if (editPhone.isBlank()) {
+              editPhoneError = true
+              return@Button
+            }
+            onUpdateContact(
+              target.copy(
+                name = editName.trim(),
+                phone = editPhone.trim(),
+                relation = editRelation.trim(),
+                note = editNote.trim()
+              )
+            )
+            contactToEdit = null
+          },
+          modifier = Modifier.testTag("edit_contact_save_button"),
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+        ) {
+          Text("Update")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { contactToEdit = null }) {
           Text("Cancel", color = TextMuted)
         }
       }

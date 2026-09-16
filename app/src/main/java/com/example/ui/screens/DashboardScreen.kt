@@ -501,6 +501,98 @@ fun DashboardScreen(
                       trackColor = Color.White.copy(alpha = 0.2f),
                       strokeCap = StrokeCap.Round
                     )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Spotlight Action Buttons: Guest, Checklist, and Delete Icon (on the right of Checklist)
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      // Add Guest
+                      Surface(
+                        modifier = Modifier
+                          .weight(1f)
+                          .clip(RoundedCornerShape(16.dp))
+                          .clickable { onAddGuestClick(spotlightEvent.id) }
+                          .testTag("spotlight_add_guest_btn"),
+                        color = Color.White.copy(alpha = 0.18f)
+                      ) {
+                        Row(
+                          modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                          verticalAlignment = Alignment.CenterVertically,
+                          horizontalArrangement = Arrangement.Center
+                        ) {
+                          Icon(
+                            imageVector = Icons.Default.GroupAdd,
+                            contentDescription = "Add Guest",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                          )
+                          Spacer(modifier = Modifier.width(4.dp))
+                          Text(
+                            text = if (language == "bn") "অতিথি" else "Guest",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                          )
+                        }
+                      }
+
+                      // Checklist
+                      Surface(
+                        modifier = Modifier
+                          .weight(1f)
+                          .clip(RoundedCornerShape(16.dp))
+                          .clickable { onChecklistClick(spotlightEvent.id) }
+                          .testTag("spotlight_checklist_btn"),
+                        color = AccentGold.copy(alpha = 0.25f)
+                      ) {
+                        Row(
+                          modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                          verticalAlignment = Alignment.CenterVertically,
+                          horizontalArrangement = Arrangement.Center
+                        ) {
+                          Icon(
+                            imageVector = Icons.Default.Checklist,
+                            contentDescription = "Checklist",
+                            tint = AccentGoldLight,
+                            modifier = Modifier.size(15.dp)
+                          )
+                          Spacer(modifier = Modifier.width(4.dp))
+                          Text(
+                            text = if (language == "bn") "চেকলিস্ট" else "Checklist",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                          )
+                        }
+                      }
+
+                      // Delete Icon right on the right side of Checklist
+                      Surface(
+                        modifier = Modifier
+                          .size(36.dp)
+                          .clip(CircleShape)
+                          .border(1.dp, DangerRed.copy(alpha = 0.6f), CircleShape)
+                          .clickable { eventToDelete = spotlightEvent }
+                          .testTag("spotlight_delete_event_btn"),
+                        color = DangerRed.copy(alpha = 0.25f)
+                      ) {
+                        Box(
+                          contentAlignment = Alignment.Center,
+                          modifier = Modifier.fillMaxSize()
+                        ) {
+                          Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Event",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp)
+                          )
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -534,18 +626,36 @@ fun DashboardScreen(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                      text = "Start Planning Your Event",
+                      text = if (language == "bn") "আপনার ইভেন্ট পরিকল্পনা শুরু করুন" else "Start Planning Your Event",
                       style = MaterialTheme.typography.titleMedium,
                       fontWeight = FontWeight.Bold,
                       color = Color.White
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                      text = "Tap here to create your wedding, birthday, or party in 1 minute.",
+                      text = if (language == "bn") "বিয়ে, জন্মদিন বা কোনো অনুষ্ঠানের আয়োজন করুন সহজে।" else "Create your wedding, birthday, or party in 1 minute.",
                       style = MaterialTheme.typography.bodySmall,
-                      color = Color.White.copy(alpha = 0.8f),
+                      color = Color.White.copy(alpha = 0.85f),
                       textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                      onClick = onNewEventClick,
+                      shape = RoundedCornerShape(12.dp),
+                      colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentGold,
+                        contentColor = PlumDark
+                      ),
+                      modifier = Modifier.testTag("dashboard_empty_create_event_cta")
+                    ) {
+                      Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text(
+                        text = if (language == "bn") "নতুন ইভেন্ট যোগ করুন" else "Create New Event",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                      )
+                    }
                   }
                 }
               }
@@ -576,8 +686,7 @@ fun DashboardScreen(
                 QuickActionTile(
                   title = AppStrings.get("expense_overview", language),
                   icon = Icons.Default.AccountBalanceWallet,
-                  onClick = { showExpenseOverview = !showExpenseOverview },
-                  isSelected = showExpenseOverview,
+                  onClick = { onAddExpenseClick(spotlightEvent?.id) },
                   modifier = Modifier.weight(1f),
                   testTag = "dashboard_quick_add_expense"
                 )

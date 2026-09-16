@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -114,12 +115,14 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     val remaining = (planned - spent).coerceAtLeast(0.0)
     val percentage = if (planned > 0) ((spent / planned) * 100f).coerceIn(0.0, 100.0).toFloat() else 0f
 
-    val categories = listOf("Catering", "Venue", "Decoration", "Photography", "Attire", "Gifts", "Other")
-    val breakdown = categories.map { cat ->
+    val defaultCategories = listOf("Catering", "Venue", "Decoration", "Photography", "Attire", "Gifts", "Other")
+    val allUniqueCategories = (defaultCategories + expenses.map { it.category.trim() }.filter { it.isNotBlank() })
+      .distinctBy { it.lowercase() }
+    val breakdown = allUniqueCategories.map { cat ->
       val catSpent = expenses.filter { it.category.equals(cat, ignoreCase = true) }.sumOf { it.amount }
       val catPercent = if (spent > 0) (catSpent / spent).toFloat() else 0f
       CategoryExpenseSummary(cat, catSpent, catPercent)
-    }.filter { it.spent > 0 || categories.take(3).contains(it.category) }
+    }.filter { it.spent > 0 || defaultCategories.take(3).contains(it.category) }
 
     EventBudgetSummary(
       planned = planned,
@@ -238,6 +241,58 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  fun updateEvent(
+    eventId: Long,
+    title: String,
+    category: String,
+    colorHex: String,
+    coverPhotoUri: String? = null,
+    dateFormatted: String,
+    timeFormatted: String,
+    location: String,
+    budget: Double,
+    currency: String,
+    description: String,
+    dateTimeMillis: Long? = null,
+    onSuccess: () -> Unit
+  ) {
+    viewModelScope.launch {
+      val existing = allEvents.value.firstOrNull { it.id == eventId }
+        ?: repository.getEventById(eventId).firstOrNull()
+        ?: return@launch
+
+      val calculatedMillis: Long = if (dateTimeMillis != null && dateTimeMillis > 0L) {
+        dateTimeMillis
+      } else {
+        try {
+          val format = java.text.SimpleDateFormat("MMM dd, yyyy hh:mm a", java.util.Locale.US)
+          format.parse("$dateFormatted $timeFormatted")?.time
+            ?: java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).parse(dateFormatted)?.time
+            ?: existing.dateTimeMillis
+        } catch (e: Exception) {
+          existing.dateTimeMillis
+        }
+      }
+
+      val updatedEvent = existing.copy(
+        title = title,
+        category = category,
+        coverPhotoColorHex = colorHex,
+        coverPhotoUri = coverPhotoUri,
+        dateTimeMillis = calculatedMillis,
+        dateFormatted = dateFormatted,
+        timeFormatted = timeFormatted,
+        location = location,
+        description = description,
+        plannedBudget = budget,
+        currency = currency
+      )
+      repository.updateEvent(updatedEvent)
+      _selectedEventId.value = eventId
+      onSuccess()
+    }
+  }
+
   fun deleteEvent(event: EventEntity, onDeleted: () -> Unit) {
     viewModelScope.launch {
       repository.deleteEvent(event)
@@ -282,9 +337,10 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     paymentStatus: String,
     dueAmount: Double = 0.0,
     note: String = "",
-    date: String = "Today"
+    date: String = "Today",
+    explicitEventId: Long? = null
   ) {
-    val currentId = _selectedEventId.value ?: return
+    val currentId = explicitEventId ?: _selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: return
     viewModelScope.launch {
       repository.insertExpense(
         ExpenseEntity(
@@ -308,7 +364,14 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   // Contact Actions
-  fun addContact(name: String, phone: String, relation: String, note: String) {
+  fun addContact(
+    name: String,
+    phone: String,
+    relation: String,
+    note: String,
+    eventId: Long? = null,
+    onComplete: ((Long) -> Unit)? = null
+  ) {
     viewModelScope.launch {
       val colors = listOf("#4A1030", "#1F6E52", "#D4AF6A", "#285496", "#C85A32")
       val randomColor = colors.random()
@@ -319,7 +382,7 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
         "other" -> "Other"
         else -> relation.trim().ifBlank { "Other" }
       }
-      repository.insertContact(
+      val newId = repository.insertContact(
         ContactEntity(
           userId = currentUser.value?.id ?: 1L,
           name = name.trim(),
@@ -329,12 +392,30 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
           avatarColorHex = randomColor
         )
       )
+      if (eventId != null) {
+        repository.addContactToEvent(eventId, newId, "Not Called")
+      }
+      onComplete?.invoke(newId)
+    }
+  }
+
+  fun updateContact(contact: ContactEntity, onComplete: (() -> Unit)? = null) {
+    viewModelScope.launch {
+      repository.updateContact(contact)
+      onComplete?.invoke()
     }
   }
 
   fun deleteContact(contact: ContactEntity) {
     viewModelScope.launch {
       repository.deleteContact(contact)
+    }
+  }
+
+  fun removeGuestFromEvent(eventId: Long, contactId: Long, onComplete: (() -> Unit)? = null) {
+    viewModelScope.launch {
+      repository.removeGuestFromEvent(eventId, contactId)
+      onComplete?.invoke()
     }
   }
 
@@ -396,9 +477,7 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
 
   fun addGuestsToEvent(eventId: Long, contactIds: Set<Long>, onDone: () -> Unit) {
     viewModelScope.launch {
-      contactIds.forEach { contactId ->
-        repository.addContactToEvent(eventId, contactId, "Not Called")
-      }
+      repository.syncEventGuests(eventId, contactIds)
       onDone()
     }
   }
@@ -481,10 +560,24 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun signInWithGoogle(name: String, email: String, onComplete: (UserEntity) -> Unit) {
+  fun signInWithGoogle(name: String, email: String, photoUrl: String? = null, onComplete: (UserEntity) -> Unit) {
     viewModelScope.launch {
-      val user = repository.loginWithGoogle(name, email)
+      val user = repository.loginWithGoogle(name, email, photoUrl)
       onComplete(user)
+    }
+  }
+
+  fun updateGoogleWebClientId(clientId: String) {
+    viewModelScope.launch {
+      val current = settings.value
+      repository.saveSettings(current.copy(googleWebClientId = clientId.trim()))
+    }
+  }
+
+  fun toggleAutoLoginWithGoogle(enabled: Boolean) {
+    viewModelScope.launch {
+      val current = settings.value
+      repository.saveSettings(current.copy(autoLoginWithGoogleEnabled = enabled))
     }
   }
 

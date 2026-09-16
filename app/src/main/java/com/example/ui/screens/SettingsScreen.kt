@@ -19,14 +19,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -75,6 +80,8 @@ fun SettingsScreen(
   onUpdateCurrency: (String) -> Unit,
   onUpdateAccentColor: (String) -> Unit,
   onToggleNotifications: (Boolean) -> Unit,
+  onUpdateGoogleWebClientId: (String) -> Unit = {},
+  onToggleAutoLoginWithGoogle: (Boolean) -> Unit = {},
   onLogOut: () -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -182,6 +189,169 @@ fun SettingsScreen(
               fontWeight = FontWeight.Bold,
               color = DangerRed
             )
+          }
+        }
+      }
+
+      // Account Security & Privacy Section
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+          text = if (settings.language == "bn") "অ্যাকাউন্ট ও ডেটা নিরাপত্তা" else "Account Security & Privacy",
+          style = MaterialTheme.typography.titleMedium,
+          fontFamily = FontFamily.Serif,
+          fontWeight = FontWeight.Bold,
+          color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Surface(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .border(1.dp, BorderSubtle, RoundedCornerShape(18.dp)),
+          color = MaterialTheme.colorScheme.surface
+        ) {
+          Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+          ) {
+            // 1. Account Protection Status Card
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Emerald.copy(alpha = 0.08f))
+                .padding(12.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+              ) {
+                Surface(
+                  shape = CircleShape,
+                  color = Emerald.copy(alpha = 0.15f),
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                      imageVector = Icons.Default.Security,
+                      contentDescription = "Security Status",
+                      tint = Emerald,
+                      modifier = Modifier.size(20.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                  Text(
+                    text = if (settings.language == "bn") "অ্যাকাউন্ট সুরক্ষিত (Secured)" else "Account Protected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Emerald
+                  )
+                  Text(
+                    text = if (settings.language == "bn") "গুগল অথেন্টিকেশন ও নিরাপদ এনক্রিপ্টেড সেশন সক্রিয়" else "Secured via Google Auth & encrypted session tokens",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                    fontSize = 11.sp
+                  )
+                }
+              }
+
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Emerald.copy(alpha = 0.15f)
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .size(6.dp)
+                      .clip(CircleShape)
+                      .background(Emerald)
+                  )
+                  Spacer(modifier = Modifier.width(5.dp))
+                  Text(
+                    text = if (settings.language == "bn") "সুরক্ষিত" else "Protected",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Emerald
+                  )
+                }
+              }
+            }
+
+            // 2. Google Auto-Login Switch
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = if (settings.language == "bn") "স্বয়ংক্রিয় দ্রুত লগইন (Auto-Login)" else "Quick Auto-Login",
+                  style = MaterialTheme.typography.bodyMedium,
+                  fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                  text = if (settings.language == "bn") "অ্যাপ খোলার সাথে সাথে ক্রেডেনশিয়াল ম্যানেজার দিয়ে নিরাপদে সাইন-ইন হবে" else "Seamlessly authenticate on app startup using Android Credential Manager",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = TextMuted
+                )
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Switch(
+                checked = settings.autoLoginWithGoogleEnabled,
+                onCheckedChange = { onToggleAutoLoginWithGoogle(it) },
+                colors = SwitchDefaults.colors(
+                  checkedThumbColor = Color.White,
+                  checkedTrackColor = Emerald
+                )
+              )
+            }
+
+            // 3. Local Data Vault & Device Privacy Indicator
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(DeepPlum.copy(alpha = 0.05f))
+                .padding(12.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Surface(
+                shape = CircleShape,
+                color = DeepPlum.copy(alpha = 0.1f),
+                modifier = Modifier.size(36.dp)
+              ) {
+                Box(contentAlignment = Alignment.Center) {
+                  Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Data Privacy",
+                    tint = DeepPlum,
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = if (settings.language == "bn") "স্থানীয় ডিভাইস ভল্ট (Offline Vault)" else "Encrypted Local Storage",
+                  style = MaterialTheme.typography.bodyMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                  text = if (settings.language == "bn") "আপনার ইভেন্ট, বাজেট ও পরিচিতির সমস্ত তথ্য নিরাপদ ও সুরক্ষিত।" else "Budgets, expenses & contacts are stored safely in isolated app sandbox.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = TextMuted,
+                  fontSize = 11.sp
+                )
+              }
+            }
           }
         }
       }

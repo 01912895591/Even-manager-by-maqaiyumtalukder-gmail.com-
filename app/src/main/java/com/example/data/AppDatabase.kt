@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
     EventContactCrossRef::class,
     AppSettingsEntity::class
   ],
-  version = 6,
+  version = 8,
   exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -95,8 +95,14 @@ abstract class AppDatabase : RoomDatabase() {
               isDarkMode = false,
               accentColorHex = "#D4AF6A",
               defaultCurrency = "৳",
-              notificationsEnabled = true
+              notificationsEnabled = true,
+              googleWebClientId = "755771767239-uhtf0nttaosh42kcs3g90hmq9enqj0q1.apps.googleusercontent.com",
+              autoLoginWithGoogleEnabled = true
             )
+          )
+        } else if (current.googleWebClientId.isBlank()) {
+          db.appSettingsDao().saveSettings(
+            current.copy(googleWebClientId = "755771767239-uhtf0nttaosh42kcs3g90hmq9enqj0q1.apps.googleusercontent.com")
           )
         }
       } catch (e: Exception) {

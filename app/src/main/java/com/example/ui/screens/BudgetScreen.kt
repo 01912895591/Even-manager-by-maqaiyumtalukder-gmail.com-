@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,13 +18,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -436,92 +444,337 @@ fun BudgetScreen(
     var paymentStatus by remember { mutableStateOf("Paid") }
     var dueAmountText by remember { mutableStateOf("") }
 
-    val categories = listOf("Catering", "Venue", "Decoration", "Photography", "Attire", "Gifts", "Other")
+    // Custom Category States
+    var showCustomCategoryInput by remember { mutableStateOf(false) }
+    var customCategoryNameInput by remember { mutableStateOf("") }
+    var customCategoryError by remember { mutableStateOf(false) }
+
+    val defaultCategories = remember {
+      listOf("Catering", "Venue", "Decoration", "Photography", "Attire", "Gifts", "Other")
+    }
+    val existingExpenseCategories = remember(expenses) {
+      expenses.map { it.category.trim() }.filter { it.isNotBlank() }.distinct()
+    }
+    var userAddedCategories by remember { mutableStateOf(listOf<String>()) }
+
+    val allAvailableCategories = remember(defaultCategories, existingExpenseCategories, userAddedCategories) {
+      (defaultCategories + existingExpenseCategories + userAddedCategories).distinctBy { it.lowercase() }
+    }
 
     AlertDialog(
       onDismissRequest = { showAddExpenseDialog = false },
       title = {
-        Text("Add New Expense", style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif)
+        Text(
+          text = if (language == "bn") "নতুন খরচ যোগ করুন" else "Add New Expense",
+          style = MaterialTheme.typography.titleLarge,
+          fontFamily = FontFamily.Serif,
+          fontWeight = FontWeight.Bold
+        )
       },
       text = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+          // 1. Expense Item Name
           OutlinedTextField(
             value = expenseName,
             onValueChange = { expenseName = it },
-            label = { Text("Expense item name") },
-            placeholder = { Text("e.g. Wedding Cake & Sweets") },
+            label = { Text(if (language == "bn") "খরচের বিবরণ / নাম" else "Expense item name") },
+            placeholder = { Text(if (language == "bn") "যেমন: স্টেজ ডেকোরেশন" else "e.g. Wedding Cake & Sweets") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("add_expense_name_input")
           )
 
+          // 2. Amount
           OutlinedTextField(
             value = expenseAmount,
             onValueChange = { expenseAmount = it },
-            label = { Text("Amount ($currencySymbol)") },
+            label = { Text("${if (language == "bn") "পরিমাণ" else "Amount"} ($currencySymbol)") },
             placeholder = { Text("e.g. 25000") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("add_expense_amount_input")
           )
 
-          Text("Category", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-          ) {
-            categories.take(3).forEach { cat ->
-              val isSelected = cat == selectedCategory
+          // 3. Category Section (Header + Custom Input + Chips)
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Category Header with "+ NEW" CTA Button
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = if (language == "bn") "ক্যাটাগরি" else "Category",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+              )
+
+              // "+ NEW" CTA Button
               Surface(
                 modifier = Modifier
-                  .clip(RoundedCornerShape(8.dp))
-                  .border(1.dp, if (isSelected) DeepPlum else BorderSubtle, RoundedCornerShape(8.dp))
-                  .clickable { selectedCategory = cat },
-                color = if (isSelected) DeepPlum else MaterialTheme.colorScheme.surface
+                  .clip(RoundedCornerShape(6.dp))
+                  .clickable { showCustomCategoryInput = !showCustomCategoryInput }
+                  .testTag("budget_add_new_category_cta"),
+                color = if (showCustomCategoryInput) AccentGold else AccentGold.copy(alpha = 0.15f)
               ) {
-                Text(
-                  text = cat,
-                  style = MaterialTheme.typography.labelSmall,
-                  color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                )
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New Category",
+                    tint = if (showCustomCategoryInput) PlumDark else AccentGold,
+                    modifier = Modifier.size(14.dp)
+                  )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = if (language == "bn") "নতুন" else "NEW",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (showCustomCategoryInput) PlumDark else AccentGold
+                  )
+                }
+              }
+            }
+
+            // Expandable Custom Category Input Field
+            if (showCustomCategoryInput) {
+              Surface(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(12.dp))
+                  .border(1.dp, AccentGold.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+                color = AccentGold.copy(alpha = 0.08f)
+              ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                  ) {
+                    OutlinedTextField(
+                      value = customCategoryNameInput,
+                      onValueChange = {
+                        customCategoryNameInput = it
+                        if (customCategoryError) customCategoryError = false
+                      },
+                      placeholder = {
+                        Text(
+                          if (language == "bn") "ক্যাটাগরির নাম..." else "Category name...",
+                          fontSize = 13.sp,
+                          maxLines = 1
+                        )
+                      },
+                      singleLine = true,
+                      isError = customCategoryError,
+                      shape = RoundedCornerShape(8.dp),
+                      colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentGold,
+                        unfocusedBorderColor = BorderSubtle
+                      ),
+                      modifier = Modifier
+                        .weight(1f)
+                        .testTag("custom_category_text_input")
+                    )
+
+                    Button(
+                      onClick = {
+                        val trimmed = customCategoryNameInput.trim()
+                        if (trimmed.isNotBlank()) {
+                          if (!allAvailableCategories.any { it.equals(trimmed, ignoreCase = true) }) {
+                            userAddedCategories = userAddedCategories + trimmed
+                          }
+                          selectedCategory = trimmed
+                          customCategoryNameInput = ""
+                          showCustomCategoryInput = false
+                        } else {
+                          customCategoryError = true
+                        }
+                      },
+                      colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentGold,
+                        contentColor = PlumDark
+                      ),
+                      shape = RoundedCornerShape(8.dp),
+                      contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                      modifier = Modifier
+                        .height(50.dp)
+                        .testTag("save_custom_category_button")
+                    ) {
+                      Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text(
+                        text = if (language == "bn") "যোগ" else "Add",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                      )
+                    }
+
+                    IconButton(
+                      onClick = {
+                        showCustomCategoryInput = false
+                        customCategoryError = false
+                      },
+                      modifier = Modifier.size(36.dp)
+                    ) {
+                      Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                      )
+                    }
+                  }
+
+                  if (customCategoryError) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                      text = if (language == "bn") "ক্যাটাগরির নাম লিখুন" else "Category name cannot be blank",
+                      color = MaterialTheme.colorScheme.error,
+                      style = MaterialTheme.typography.labelSmall
+                    )
+                  }
+                }
+              }
+            }
+
+            // Category Chips Row (Horizontally scrollable with "+ New" chip + all categories)
+            LazyRow(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              // First item: "+ New" chip CTA
+              item {
+                Surface(
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                      1.dp,
+                      if (showCustomCategoryInput) AccentGold else BorderSubtle,
+                      RoundedCornerShape(8.dp)
+                    )
+                    .clickable { showCustomCategoryInput = true }
+                    .testTag("budget_category_new_chip"),
+                  color = if (showCustomCategoryInput) AccentGold.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.Add,
+                      contentDescription = null,
+                      tint = AccentGold,
+                      modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = if (language == "bn") "নতুন" else "New",
+                      style = MaterialTheme.typography.labelSmall,
+                      fontWeight = FontWeight.Bold,
+                      color = AccentGold
+                    )
+                  }
+                }
+              }
+
+              // All Categories (Standard + Custom)
+              items(allAvailableCategories) { cat ->
+                val isSelected = cat.equals(selectedCategory, ignoreCase = true)
+                val isCustom = !defaultCategories.any { it.equals(cat, ignoreCase = true) }
+                Surface(
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                      1.dp,
+                      if (isSelected) DeepPlum else BorderSubtle,
+                      RoundedCornerShape(8.dp)
+                    )
+                    .clickable {
+                      selectedCategory = cat
+                      showCustomCategoryInput = false
+                    }
+                    .testTag("budget_category_chip_$cat"),
+                  color = if (isSelected) DeepPlum else MaterialTheme.colorScheme.surface
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    if (isCustom) {
+                      Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = if (isSelected) AccentGold else AccentGold.copy(alpha = 0.7f),
+                        modifier = Modifier.size(12.dp)
+                      )
+                      Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                      text = cat,
+                      style = MaterialTheme.typography.labelSmall,
+                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                      color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                  }
+                }
               }
             }
           }
 
-          // Payment Status
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-          ) {
-            listOf("Paid", "Due").forEach { st ->
-              val isSelected = paymentStatus == st
-              Surface(
-                modifier = Modifier
-                  .weight(1f)
-                  .clip(RoundedCornerShape(8.dp))
-                  .border(1.dp, if (isSelected) DeepPlum else BorderSubtle, RoundedCornerShape(8.dp))
-                  .clickable { paymentStatus = st },
-                color = if (isSelected) DeepPlum else MaterialTheme.colorScheme.surface
-              ) {
-                Text(
-                  text = st,
-                  style = MaterialTheme.typography.labelMedium,
-                  fontWeight = FontWeight.Bold,
-                  color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                  modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp)
-                )
+          // 4. Payment Status Section
+          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+              text = if (language == "bn") "পেমেন্ট স্ট্যাটাস" else "Payment Status",
+              style = MaterialTheme.typography.labelMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+              listOf("Paid", "Due").forEach { st ->
+                val isSelected = paymentStatus == st
+                Surface(
+                  modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, if (isSelected) DeepPlum else BorderSubtle, RoundedCornerShape(8.dp))
+                    .clickable { paymentStatus = st }
+                    .testTag("budget_payment_status_$st"),
+                  color = if (isSelected) DeepPlum else MaterialTheme.colorScheme.surface
+                ) {
+                  Text(
+                    text = if (st == "Paid") (if (language == "bn") "পরিশোধিত (Paid)" else "Paid") else (if (language == "bn") "বাকি (Due)" else "Due"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                    textAlign = TextAlign.Center
+                  )
+                }
               }
             }
           }
 
+          // 5. Due Amount Field (if Due)
           if (paymentStatus == "Due") {
             OutlinedTextField(
               value = dueAmountText,
               onValueChange = { dueAmountText = it },
-              label = { Text("Due Amount ($currencySymbol)") },
+              label = { Text("${if (language == "bn") "বাকির পরিমাণ" else "Due Amount"} ($currencySymbol)") },
               keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
               singleLine = true,
-              modifier = Modifier.fillMaxWidth()
+              modifier = Modifier.fillMaxWidth().testTag("add_expense_due_input")
             )
           }
         }
@@ -531,19 +784,25 @@ fun BudgetScreen(
           onClick = {
             val amount = expenseAmount.toDoubleOrNull() ?: 0.0
             val due = dueAmountText.toDoubleOrNull() ?: 0.0
+            val finalCategory = if (showCustomCategoryInput && customCategoryNameInput.isNotBlank()) {
+              customCategoryNameInput.trim()
+            } else {
+              selectedCategory.ifBlank { "Other" }
+            }
             if (expenseName.isNotBlank() && amount > 0) {
-              onAddExpense(expenseName, selectedCategory, amount, paymentStatus, due)
+              onAddExpense(expenseName.trim(), finalCategory, amount, paymentStatus, due)
               showAddExpenseDialog = false
             }
           },
-          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
+          modifier = Modifier.testTag("confirm_add_expense_button")
         ) {
-          Text("Add Expense")
+          Text(if (language == "bn") "খরচ যোগ করুন" else "Add Expense")
         }
       },
       dismissButton = {
         TextButton(onClick = { showAddExpenseDialog = false }) {
-          Text("Cancel", color = TextMuted)
+          Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
         }
       }
     )

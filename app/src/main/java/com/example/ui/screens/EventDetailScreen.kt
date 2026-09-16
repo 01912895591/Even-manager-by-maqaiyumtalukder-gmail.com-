@@ -26,10 +26,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,6 +41,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -109,6 +115,11 @@ fun EventDetailScreen(
   onUpdateGuestStatus: (contactId: Long, newStatus: String) -> Unit,
   onNavigateToAddGuests: () -> Unit,
   onNavigateToBudget: () -> Unit,
+  onEditEvent: () -> Unit = {},
+  onUpdateContact: (ContactEntity) -> Unit = {},
+  onAddVendorToEvent: (name: String, phone: String, note: String) -> Unit = { _, _, _ -> },
+  onRemoveVendorFromEvent: (contactId: Long) -> Unit = {},
+  onLinkContactToEvent: (contactId: Long) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
@@ -184,25 +195,38 @@ fun EventDetailScreen(
             )
           }
 
-          IconButton(
-            onClick = {
-              if (event != null) {
-                val sendIntent: Intent = Intent().apply {
-                  action = Intent.ACTION_SEND
-                  putExtra(Intent.EXTRA_TEXT, "You're invited to ${event.title} on ${event.dateFormatted} at ${event.location}!")
-                  type = "text/plain"
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+              onClick = onEditEvent,
+              modifier = Modifier.testTag("event_detail_edit_button")
+            ) {
+              Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Edit Event",
+                tint = Color.White
+              )
+            }
+
+            IconButton(
+              onClick = {
+                if (event != null) {
+                  val sendIntent: Intent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, "You're invited to ${event.title} on ${event.dateFormatted} at ${event.location}!")
+                    type = "text/plain"
+                  }
+                  val shareIntent = Intent.createChooser(sendIntent, null)
+                  context.startActivity(shareIntent)
                 }
-                val shareIntent = Intent.createChooser(sendIntent, null)
-                context.startActivity(shareIntent)
-              }
-            },
-            modifier = Modifier.testTag("event_detail_share_button")
-          ) {
-            Icon(
-              imageVector = Icons.Default.Share,
-              contentDescription = "Share",
-              tint = Color.White
-            )
+              },
+              modifier = Modifier.testTag("event_detail_share_button")
+            ) {
+              Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = "Share",
+                tint = Color.White
+              )
+            }
           }
         }
 
@@ -358,7 +382,12 @@ fun EventDetailScreen(
         2 -> VendorsTabContent(
           eventGuests = eventGuests,
           allContacts = allContacts,
-          onAddVendorClick = onNavigateToAddGuests
+          onAddVendorClick = onNavigateToAddGuests,
+          onUpdateContact = onUpdateContact,
+          onAddNewVendor = onAddVendorToEvent,
+          onRemoveVendor = onRemoveVendorFromEvent,
+          onLinkExistingContactAsVendor = onLinkContactToEvent,
+          language = language
         )
 
         3 -> BudgetTabContent(
@@ -691,12 +720,29 @@ fun GuestRowItem(
 fun VendorsTabContent(
   eventGuests: List<EventContactCrossRef>,
   allContacts: List<ContactEntity>,
-  onAddVendorClick: () -> Unit
+  onAddVendorClick: () -> Unit,
+  onUpdateContact: (ContactEntity) -> Unit = {},
+  onAddNewVendor: (name: String, phone: String, note: String) -> Unit = { _, _, _ -> },
+  onRemoveVendor: (contactId: Long) -> Unit = {},
+  onLinkExistingContactAsVendor: (contactId: Long) -> Unit = {},
+  language: String = "en"
 ) {
   val context = LocalContext.current
-  val vendorContacts = remember(allContacts, eventGuests) {
-    val guestContactIds = eventGuests.map { it.contactId }.toSet()
+  var showAddVendorDialog by remember { mutableStateOf(false) }
+  var vendorToEdit by remember { mutableStateOf<ContactEntity?>(null) }
+
+  val guestContactIds = remember(eventGuests) {
+    eventGuests.map { it.contactId }.toSet()
+  }
+
+  // Vendors linked to this event
+  val vendorContacts = remember(allContacts, guestContactIds) {
     allContacts.filter { it.relation.equals("Vendor", ignoreCase = true) && guestContactIds.contains(it.id) }
+  }
+
+  // Other contacts with relation == "Vendor" not yet added to this event
+  val unlinkedVendors = remember(allContacts, guestContactIds) {
+    allContacts.filter { !guestContactIds.contains(it.id) }
   }
 
   Column(modifier = Modifier.fillMaxSize()) {
@@ -708,79 +754,494 @@ fun VendorsTabContent(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Text(
-        text = "${vendorContacts.size} Event Vendors",
+        text = if (language == "bn") "${vendorContacts.size} জন ভেন্ডর" else "${vendorContacts.size} Event Vendors",
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface
       )
 
       Button(
-        onClick = onAddVendorClick,
+        onClick = { showAddVendorDialog = true },
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = AccentGold,
           contentColor = PlumDark
-        )
+        ),
+        modifier = Modifier.testTag("event_add_vendor_button")
       ) {
         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.width(4.dp))
-        Text("Add Vendor", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text(
+          text = if (language == "bn") "ভেন্ডর যোগ করুন" else "Add Vendor",
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.Bold
+        )
       }
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-      items(vendorContacts, key = { it.id }) { vendor ->
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp)),
-          color = MaterialTheme.colorScheme.surface
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+    if (vendorContacts.isEmpty()) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f)
+          .padding(32.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          Icon(
+            imageVector = Icons.Default.Storefront,
+            contentDescription = null,
+            tint = AccentGold.copy(alpha = 0.8f),
+            modifier = Modifier.size(56.dp)
+          )
+          Spacer(modifier = Modifier.height(14.dp))
+          Text(
+            text = if (language == "bn") "কোন ভেন্ডর যুক্ত করা হয়নি" else "No vendors added yet",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = if (language == "bn") "ক্যাটারিং, স্টেজ, ফটোগ্রাফি ইত্যাদি ভেন্ডর যুক্ত করুন" else "Add caterers, photographers, decorators, sound systems, and more.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+          )
+          Spacer(modifier = Modifier.height(18.dp))
+          Button(
+            onClick = { showAddVendorDialog = true },
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = DeepPlum, contentColor = Color.White)
           ) {
-            InitialsAvatar(name = vendor.name, backgroundColorHex = "#1F6E52", size = 42.dp)
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-              Text(
-                text = vendor.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-              )
-              Text(
-                text = vendor.note.ifBlank { "Service Provider" },
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
-              )
-              Text(
-                text = vendor.phone,
-                style = MaterialTheme.typography.labelSmall,
-                color = DeepPlum,
-                fontWeight = FontWeight.SemiBold
-              )
-            }
-
-            IconButton(
-              onClick = {
-                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${vendor.phone}"))
-                context.startActivity(dialIntent)
-              }
-            ) {
-              Icon(Icons.Default.Call, contentDescription = "Call Vendor", tint = Emerald)
-            }
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(if (language == "bn") "প্রথম ভেন্ডর যোগ করুন" else "Add Your First Vendor", fontWeight = FontWeight.SemiBold)
           }
         }
       }
-      item { Spacer(modifier = Modifier.height(30.dp)) }
+    } else {
+      LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(vendorContacts, key = { it.id }) { vendor ->
+          Surface(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(vertical = 5.dp)
+              .clip(RoundedCornerShape(14.dp))
+              .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp)),
+            color = MaterialTheme.colorScheme.surface
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              InitialsAvatar(name = vendor.name, backgroundColorHex = "#1F6E52", size = 42.dp)
+
+              Spacer(modifier = Modifier.width(12.dp))
+
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = vendor.name,
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                  text = vendor.note.ifBlank { "Service Provider" },
+                  style = MaterialTheme.typography.bodySmall,
+                  color = AccentGold,
+                  fontWeight = FontWeight.Medium
+                )
+                Text(
+                  text = vendor.phone,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = DeepPlum,
+                  fontWeight = FontWeight.SemiBold
+                )
+              }
+
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                // Call button
+                IconButton(
+                  onClick = {
+                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${vendor.phone}"))
+                    try {
+                      context.startActivity(dialIntent)
+                    } catch (e: Exception) {
+                      // Handled
+                    }
+                  },
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Icon(Icons.Default.Call, contentDescription = "Call Vendor", tint = Emerald, modifier = Modifier.size(20.dp))
+                }
+
+                // Edit button
+                IconButton(
+                  onClick = { vendorToEdit = vendor },
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Icon(Icons.Default.Edit, contentDescription = "Edit Vendor", tint = DeepPlum, modifier = Modifier.size(18.dp))
+                }
+
+                // Remove from event button
+                IconButton(
+                  onClick = { onRemoveVendor(vendor.id) },
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Icon(Icons.Default.Delete, contentDescription = "Remove Vendor", tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
+              }
+            }
+          }
+        }
+        item { Spacer(modifier = Modifier.height(30.dp)) }
+      }
     }
+  }
+
+  // Dialog to Add Vendor (New Vendor OR Pick Existing)
+  if (showAddVendorDialog) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var newVendorName by remember { mutableStateOf("") }
+    var newVendorPhone by remember { mutableStateOf("") }
+    var newVendorService by remember { mutableStateOf("Catering") }
+    var newVendorNote by remember { mutableStateOf("") }
+    var nameError by remember { mutableStateOf(false) }
+    var phoneError by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val vendorServices = listOf(
+      "Catering", "Photography", "Decoration", "Stage",
+      "Sound & Music", "Venue", "Makeup", "Transport", "Other"
+    )
+
+    AlertDialog(
+      onDismissRequest = { showAddVendorDialog = false },
+      title = {
+        Column {
+          Text(
+            text = if (language == "bn") "ভেন্ডর যুক্ত করুন" else "Add Vendor to Event",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            FilterChip(
+              selected = selectedTab == 0,
+              onClick = { selectedTab = 0 },
+              label = { Text("New Vendor", fontSize = 12.sp) },
+              colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = DeepPlum,
+                selectedLabelColor = Color.White
+              )
+            )
+            FilterChip(
+              selected = selectedTab == 1,
+              onClick = { selectedTab = 1 },
+              label = { Text("From Contacts (${unlinkedVendors.size})", fontSize = 12.sp) },
+              colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = DeepPlum,
+                selectedLabelColor = Color.White
+              )
+            )
+          }
+        }
+      },
+      text = {
+        if (selectedTab == 0) {
+          Column(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+              value = newVendorName,
+              onValueChange = {
+                newVendorName = it
+                if (nameError) nameError = false
+              },
+              label = { Text("Vendor Name *") },
+              placeholder = { Text("e.g. Master Chef Catering") },
+              singleLine = true,
+              isError = nameError,
+              supportingText = if (nameError) {
+                { Text("Name is required", color = MaterialTheme.colorScheme.error) }
+              } else null,
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth().testTag("add_vendor_name_input")
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+              value = newVendorPhone,
+              onValueChange = {
+                newVendorPhone = it
+                if (phoneError) phoneError = false
+              },
+              label = { Text("Phone Number *") },
+              placeholder = { Text("+880 1712-345678") },
+              singleLine = true,
+              isError = phoneError,
+              supportingText = if (phoneError) {
+                { Text("Phone is required", color = MaterialTheme.colorScheme.error) }
+              } else null,
+              keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+              ),
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth().testTag("add_vendor_phone_input")
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+              text = "Service Type",
+              style = MaterialTheme.typography.labelMedium,
+              fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              items(vendorServices) { srv ->
+                val isSrvSel = newVendorService == srv
+                FilterChip(
+                  selected = isSrvSel,
+                  onClick = { newVendorService = srv },
+                  label = { Text(srv, fontSize = 11.sp) },
+                  colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = AccentGold,
+                    selectedLabelColor = PlumDark
+                  )
+                )
+              }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+              value = newVendorNote,
+              onValueChange = { newVendorNote = it },
+              label = { Text("Additional Notes (optional)") },
+              placeholder = { Text("e.g. advance 5000 paid, 300 guests menu") },
+              maxLines = 2,
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth().testTag("add_vendor_note_input")
+            )
+          }
+        } else {
+          // Tab 1: Pick from existing contacts
+          Column(modifier = Modifier.fillMaxWidth().height(280.dp)) {
+            OutlinedTextField(
+              value = searchQuery,
+              onValueChange = { searchQuery = it },
+              placeholder = { Text("Search contact...") },
+              leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+              singleLine = true,
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val filteredList = remember(unlinkedVendors, searchQuery) {
+              if (searchQuery.isBlank()) unlinkedVendors
+              else unlinkedVendors.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                  it.phone.contains(searchQuery, ignoreCase = true) ||
+                  it.note.contains(searchQuery, ignoreCase = true)
+              }
+            }
+
+            if (filteredList.isEmpty()) {
+              Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                  text = if (searchQuery.isBlank()) "No available contacts. Switch to 'New Vendor' tab to add." else "No contacts match search.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = TextMuted,
+                  textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+              }
+            } else {
+              LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(filteredList, key = { it.id }) { c ->
+                  Surface(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(vertical = 3.dp)
+                      .clickable {
+                        // If not already a vendor, update relation to Vendor
+                        if (!c.relation.equals("Vendor", ignoreCase = true)) {
+                          onUpdateContact(c.copy(relation = "Vendor"))
+                        }
+                        onLinkExistingContactAsVendor(c.id)
+                        showAddVendorDialog = false
+                      },
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                  ) {
+                    Row(
+                      modifier = Modifier.padding(8.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                      Column(modifier = Modifier.weight(1f)) {
+                        Text(c.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("${c.relation} • ${c.phone}", fontSize = 11.sp, color = TextMuted)
+                      }
+                      Text(
+                        text = "+ Add",
+                        fontWeight = FontWeight.Bold,
+                        color = AccentGold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                      )
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {
+        if (selectedTab == 0) {
+          Button(
+            onClick = {
+              if (newVendorName.isBlank()) {
+                nameError = true
+                return@Button
+              }
+              if (newVendorPhone.isBlank()) {
+                phoneError = true
+                return@Button
+              }
+              val fullNote = if (newVendorNote.isBlank()) newVendorService else "$newVendorService - $newVendorNote"
+              onAddNewVendor(newVendorName.trim(), newVendorPhone.trim(), fullNote.trim())
+              showAddVendorDialog = false
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
+            modifier = Modifier.testTag("confirm_add_vendor_button")
+          ) {
+            Text("Save Vendor")
+          }
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showAddVendorDialog = false }) {
+          Text("Cancel", color = TextMuted)
+        }
+      }
+    )
+  }
+
+  // Dialog to Edit Vendor details
+  if (vendorToEdit != null) {
+    val targetVendor = vendorToEdit!!
+    var editName by remember(targetVendor) { mutableStateOf(targetVendor.name) }
+    var editPhone by remember(targetVendor) { mutableStateOf(targetVendor.phone) }
+    var editNote by remember(targetVendor) { mutableStateOf(targetVendor.note) }
+    var nameErr by remember { mutableStateOf(false) }
+    var phoneErr by remember { mutableStateOf(false) }
+
+    AlertDialog(
+      onDismissRequest = { vendorToEdit = null },
+      title = {
+        Text(
+          text = if (language == "bn") "ভেন্ডর তথ্য আপডেট" else "Edit Vendor Details",
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+          OutlinedTextField(
+            value = editName,
+            onValueChange = {
+              editName = it
+              if (nameErr) nameErr = false
+            },
+            label = { Text("Vendor Name *") },
+            singleLine = true,
+            isError = nameErr,
+            supportingText = if (nameErr) {
+              { Text("Name is required", color = MaterialTheme.colorScheme.error) }
+            } else null,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_vendor_name_input")
+          )
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          OutlinedTextField(
+            value = editPhone,
+            onValueChange = {
+              editPhone = it
+              if (phoneErr) phoneErr = false
+            },
+            label = { Text("Phone Number *") },
+            singleLine = true,
+            isError = phoneErr,
+            supportingText = if (phoneErr) {
+              { Text("Phone is required", color = MaterialTheme.colorScheme.error) }
+            } else null,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+              keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+            ),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_vendor_phone_input")
+          )
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          OutlinedTextField(
+            value = editNote,
+            onValueChange = { editNote = it },
+            label = { Text("Service / Role Note") },
+            placeholder = { Text("e.g. Photography, Catering menu details") },
+            maxLines = 2,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().testTag("edit_vendor_note_input")
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            if (editName.isBlank()) {
+              nameErr = true
+              return@Button
+            }
+            if (editPhone.isBlank()) {
+              phoneErr = true
+              return@Button
+            }
+            onUpdateContact(
+              targetVendor.copy(
+                name = editName.trim(),
+                phone = editPhone.trim(),
+                relation = "Vendor",
+                note = editNote.trim()
+              )
+            )
+            vendorToEdit = null
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
+          modifier = Modifier.testTag("confirm_edit_vendor_button")
+        ) {
+          Text("Update Vendor")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { vendorToEdit = null }) {
+          Text("Cancel", color = TextMuted)
+        }
+      }
+    )
   }
 }
 
