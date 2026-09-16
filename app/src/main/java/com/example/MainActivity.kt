@@ -126,6 +126,7 @@ fun EventManagerApp(viewModel: EventViewModel) {
   val selectedEventGuests by viewModel.selectedEventGuests.collectAsStateWithLifecycle()
   val selectedEventBudgetSummary by viewModel.selectedEventBudgetSummary.collectAsStateWithLifecycle()
   val selectedEventGuestSummary by viewModel.selectedEventGuestSummary.collectAsStateWithLifecycle()
+  val selectedEventDays by viewModel.selectedEventDays.collectAsStateWithLifecycle()
 
   val contactSearchQuery by viewModel.contactSearchQuery.collectAsStateWithLifecycle()
   val contactFilter by viewModel.contactFilter.collectAsStateWithLifecycle()
@@ -457,6 +458,16 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onLinkContactToEvent = { contactId ->
             val eventId = selectedEvent?.id ?: return@EventDetailScreen
             viewModel.toggleGuestForEvent(eventId, contactId, false)
+          },
+          eventDays = selectedEventDays,
+          onAddEventDay = { dayTitle, dateFormatted, timeFormatted, dateTimeMillis, location, notes ->
+            viewModel.addEventDay(dayTitle, dateFormatted, timeFormatted, dateTimeMillis, location, notes)
+          },
+          onUpdateEventDay = { day ->
+            viewModel.updateEventDay(day)
+          },
+          onDeleteEventDay = { day ->
+            viewModel.deleteEventDay(day)
           }
         )
       }
@@ -560,11 +571,22 @@ fun EventManagerApp(viewModel: EventViewModel) {
           currencySymbol = settings.defaultCurrency,
           language = settings.language,
           onBack = { navController.popBackStack() },
-          onAddExpense = { name, cat, amount, status, due ->
-            viewModel.addExpense(name, cat, amount, status, due)
+          onAddExpense = { name, cat, amount, status, due, advance, dueDate ->
+            viewModel.addExpense(
+              name = name,
+              category = cat,
+              amount = amount,
+              paymentStatus = status,
+              dueAmount = due,
+              advancePaid = advance,
+              dueDate = dueDate
+            )
           },
           onDeleteExpense = { exp ->
             viewModel.deleteExpense(exp)
+          },
+          onUpdateExpense = { exp ->
+            viewModel.updateExpense(exp)
           }
         )
       }

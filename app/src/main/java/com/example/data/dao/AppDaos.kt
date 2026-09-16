@@ -10,6 +10,7 @@ import com.example.data.model.AppSettingsEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
+import com.example.data.model.EventDayEntity
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
@@ -154,4 +155,22 @@ interface UserDao {
 
   @Query("DELETE FROM users")
   suspend fun clearUsers()
+}
+
+@Dao
+interface EventDayDao {
+  @Query("SELECT * FROM event_days WHERE eventId = :eventId ORDER BY dateTimeMillis ASC, id ASC")
+  fun getDaysForEvent(eventId: Long): Flow<List<EventDayEntity>>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertEventDay(day: EventDayEntity): Long
+
+  @Update
+  suspend fun updateEventDay(day: EventDayEntity)
+
+  @Delete
+  suspend fun deleteEventDay(day: EventDayEntity)
+
+  @Query("DELETE FROM event_days WHERE id = :id")
+  suspend fun deleteEventDayById(id: Long)
 }

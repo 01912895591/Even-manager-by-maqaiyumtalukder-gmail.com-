@@ -77,8 +77,33 @@ data class ExpenseEntity(
   val amount: Double,
   val paymentStatus: String = "Paid", // Paid or Due
   val dueAmount: Double = 0.0,
+  val advancePaid: Double = 0.0,
+  val dueDate: Long? = null,
   val note: String = "",
   val date: String = ""
+)
+
+@Entity(
+  tableName = "event_days",
+  foreignKeys = [
+    ForeignKey(
+      entity = EventEntity::class,
+      parentColumns = ["id"],
+      childColumns = ["eventId"],
+      onDelete = ForeignKey.CASCADE
+    )
+  ],
+  indices = [Index(value = ["eventId"])]
+)
+data class EventDayEntity(
+  @PrimaryKey(autoGenerate = true) val id: Long = 0,
+  val eventId: Long,
+  val dayTitle: String, // e.g. "Gaye Holud", "Akd", "Reception"
+  val dateFormatted: String,
+  val timeFormatted: String,
+  val dateTimeMillis: Long,
+  val location: String,
+  val notes: String = ""
 )
 
 @Entity(tableName = "contacts")

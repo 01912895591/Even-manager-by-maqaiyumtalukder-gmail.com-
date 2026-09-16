@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,9 +27,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -39,10 +44,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +89,12 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.WarningAmber
 import com.example.ui.util.AppStrings
 import com.example.ui.viewmodel.EventBudgetSummary
+import com.example.ui.viewmodel.PaymentDueGroup
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 fun formatCurrency(amount: Double, currency: String): String {
   val formatter = NumberFormat.getNumberInstance(Locale.US)
@@ -96,10 +111,12 @@ fun BudgetScreen(
   currencySymbol: String,
   language: String,
   onBack: () -> Unit,
-  onAddExpense: (name: String, category: String, amount: Double, status: String, due: Double) -> Unit,
+  onAddExpense: (name: String, category: String, amount: Double, status: String, due: Double, advancePaid: Double, dueDate: Long?) -> Unit,
   onDeleteExpense: (ExpenseEntity) -> Unit,
+  onUpdateExpense: (ExpenseEntity) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
+  val context = LocalContext.current
   var showAddExpenseDialog by remember { mutableStateOf(false) }
 
   val headerBg = if (event != null) getCategoryColor(event.category) else PlumDark
@@ -185,14 +202,190 @@ fun BudgetScreen(
       }
     }
 
-    LazyColumn(
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(horizontal = 20.dp)
+    val context = LocalContext.current
+    var selectedBudgetTab by remember { mutableIntStateOf(0) }
+
+    val cal = Calendar.getInstance()
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    val startOfToday = cal.timeInMillis
+    val endOfSevenDays = startOfToday + TimeUnit.DAYS.toMillis(7)
+
+    val scheduledItems = remember(expenses) {
+      expenses.filter { it.dueDate != null }
+        .map { exp ->
+          val remainingDue = if (exp.paymentStatus.equals("Paid", ignoreCase = true)) 0.0
+          else if (exp.dueAmount > 0.0) exp.dueAmount
+          else (exp.amount - exp.advancePaid).coerceAtLeast(0.0)
+
+          val dueMillis = exp.dueDate!!
+          val diffDays = TimeUnit.MILLISECONDS.toDays(dueMillis - startOfToday)
+          val group = when {
+            dueMillis < startOfToday && remainingDue > 0.0 -> PaymentDueGroup.OVERDUE
+            dueMillis in startOfToday..endOfSevenDays && remainingDue > 0.0 -> PaymentDueGroup.DUE_THIS_WEEK
+            else -> PaymentDueGroup.UPCOMING
+          }
+          Triple(exp, remainingDue, group)
+        }
+        .sortedWith(compareBy<Triple<ExpenseEntity, Double, PaymentDueGroup>> {
+          when (it.third) {
+            PaymentDueGroup.OVERDUE -> 0
+            PaymentDueGroup.DUE_THIS_WEEK -> 1
+            PaymentDueGroup.UPCOMING -> 2
+          }
+        }.thenBy { it.first.dueDate ?: Long.MAX_VALUE })
+    }
+
+    val overdueCount = scheduledItems.count { it.third == PaymentDueGroup.OVERDUE }
+    val dueThisWeekCount = scheduledItems.count { it.third == PaymentDueGroup.DUE_THIS_WEEK }
+    val totalScheduleDue = scheduledItems.sumOf { it.second }
+    val totalAdvancePaid = expenses.sumOf { it.advancePaid }
+
+    // Sub-Tabs: Budget Overview | Payment Schedule
+    Surface(
+      modifier = Modifier.fillMaxWidth(),
+      color = MaterialTheme.colorScheme.surface,
+      tonalElevation = 1.dp
     ) {
-      // 2. Overview Card with Circular Progress Ring & Stacked Rows
-      item {
-        Spacer(modifier = Modifier.height(16.dp))
+      TabRow(
+        selectedTabIndex = selectedBudgetTab,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = DeepPlum,
+        indicator = { tabPositions ->
+          if (selectedBudgetTab < tabPositions.size) {
+            TabRowDefaults.SecondaryIndicator(
+              modifier = Modifier.tabIndicatorOffset(tabPositions[selectedBudgetTab]),
+              color = DeepPlum
+            )
+          }
+        }
+      ) {
+        Tab(
+          selected = selectedBudgetTab == 0,
+          onClick = { selectedBudgetTab = 0 },
+          text = {
+            Text(
+              text = if (language == "bn") "বাজেট ওভারভিউ" else "Budget Overview",
+              style = MaterialTheme.typography.labelLarge,
+              fontWeight = if (selectedBudgetTab == 0) FontWeight.Bold else FontWeight.Medium,
+              color = if (selectedBudgetTab == 0) DeepPlum else TextMuted
+            )
+          },
+          modifier = Modifier.testTag("budget_tab_overview")
+        )
+
+        val dueBadgeCount = overdueCount + dueThisWeekCount
+        Tab(
+          selected = selectedBudgetTab == 1,
+          onClick = { selectedBudgetTab = 1 },
+          text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = if (language == "bn") "পেমেন্ট শিডিউল" else "Payment Schedule",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selectedBudgetTab == 1) FontWeight.Bold else FontWeight.Medium,
+                color = if (selectedBudgetTab == 1) DeepPlum else TextMuted
+              )
+              if (dueBadgeCount > 0) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                  shape = CircleShape,
+                  color = if (overdueCount > 0) DangerRed else WarningAmber
+                ) {
+                  Text(
+                    text = "$dueBadgeCount",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                  )
+                }
+              }
+            }
+          },
+          modifier = Modifier.testTag("budget_tab_schedule")
+        )
+      }
+    }
+
+    if (selectedBudgetTab == 0) {
+      // TAB 0: BUDGET OVERVIEW
+      LazyColumn(
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(horizontal = 20.dp)
+      ) {
+        // Due Payment Quick Banner (if any payments are due/overdue)
+        if (overdueCount > 0 || dueThisWeekCount > 0) {
+          item {
+            Spacer(modifier = Modifier.height(14.dp))
+            Surface(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                  1.dp,
+                  if (overdueCount > 0) DangerRed.copy(alpha = 0.5f) else WarningAmber.copy(alpha = 0.5f),
+                  RoundedCornerShape(16.dp)
+                )
+                .clickable { selectedBudgetTab = 1 }
+                .testTag("budget_due_banner"),
+              color = if (overdueCount > 0) DangerRed.copy(alpha = 0.08f) else WarningAmber.copy(alpha = 0.1f)
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Surface(
+                  shape = CircleShape,
+                  color = if (overdueCount > 0) DangerRed else WarningAmber,
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                      imageVector = Icons.Default.Schedule,
+                      contentDescription = null,
+                      tint = Color.White,
+                      modifier = Modifier.size(18.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = if (overdueCount > 0) {
+                      if (language == "bn") "$overdueCount টি পেমেন্টের মেয়াদ শেষ!" else "$overdueCount vendor payment(s) overdue!"
+                    } else {
+                      if (language == "bn") "$dueThisWeekCount টি পেমেন্ট এই সপ্তাহে বাকি" else "$dueThisWeekCount vendor payment(s) due this week"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (overdueCount > 0) DangerRed else WarningAmber
+                  )
+                  Text(
+                    text = if (language == "bn") "সময়সূচী দেখতে এখানে ট্যাপ করুন" else "Tap to review vendor payment schedule",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                  )
+                }
+                Text(
+                  text = "→",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = if (overdueCount > 0) DangerRed else WarningAmber
+                )
+              }
+            }
+          }
+        }
+
+        // 2. Overview Card with Circular Progress Ring & Stacked Rows
+        item {
+          Spacer(modifier = Modifier.height(16.dp))
         Surface(
           modifier = Modifier
             .fillMaxWidth()
@@ -434,12 +627,36 @@ fun BudgetScreen(
         Spacer(modifier = Modifier.height(40.dp))
       }
     }
+  } else {
+    PaymentScheduleTabContent(
+      scheduledItems = scheduledItems,
+      totalScheduleDue = totalScheduleDue,
+      totalAdvancePaid = totalAdvancePaid,
+      overdueCount = overdueCount,
+      dueThisWeekCount = dueThisWeekCount,
+      currencySymbol = currencySymbol,
+      language = language,
+      onAddDue = { showAddExpenseDialog = true },
+      onMarkPaid = { exp ->
+        onUpdateExpense(
+          exp.copy(
+            paymentStatus = "Paid",
+            dueAmount = 0.0,
+            advancePaid = exp.amount
+          )
+        )
+      },
+      onDeleteExpense = onDeleteExpense
+    )
   }
+}
 
   // Add Expense Dialog
   if (showAddExpenseDialog) {
     var expenseName by remember { mutableStateOf("") }
     var expenseAmount by remember { mutableStateOf("") }
+    var advancePaidText by remember { mutableStateOf("") }
+    var dueDateMillis by remember { mutableStateOf<Long?>(null) }
     var selectedCategory by remember { mutableStateOf("Catering") }
     var paymentStatus by remember { mutableStateOf("Paid") }
     var dueAmountText by remember { mutableStateOf("") }
@@ -482,22 +699,143 @@ fun BudgetScreen(
           OutlinedTextField(
             value = expenseName,
             onValueChange = { expenseName = it },
-            label = { Text(if (language == "bn") "খরচের বিবরণ / নাম" else "Expense item name") },
+            label = { Text(if (language == "bn") "খরচের বিবরণ / ভেন্ডরের নাম" else "Expense item or vendor name") },
             placeholder = { Text(if (language == "bn") "যেমন: স্টেজ ডেকোরেশন" else "e.g. Wedding Cake & Sweets") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("add_expense_name_input")
           )
 
-          // 2. Amount
-          OutlinedTextField(
-            value = expenseAmount,
-            onValueChange = { expenseAmount = it },
-            label = { Text("${if (language == "bn") "পরিমাণ" else "Amount"} ($currencySymbol)") },
-            placeholder = { Text("e.g. 25000") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("add_expense_amount_input")
-          )
+          // 2. Amount and Advance Paid Row
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            OutlinedTextField(
+              value = expenseAmount,
+              onValueChange = { expenseAmount = it },
+              label = { Text("${if (language == "bn") "মোট" else "Amount"} ($currencySymbol)") },
+              placeholder = { Text("e.g. 25000") },
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+              singleLine = true,
+              modifier = Modifier.weight(1f).testTag("add_expense_amount_input")
+            )
+
+            OutlinedTextField(
+              value = advancePaidText,
+              onValueChange = { advancePaidText = it },
+              label = { Text("${if (language == "bn") "অগ্রিম" else "Advance"} ($currencySymbol)") },
+              placeholder = { Text("e.g. 5000") },
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+              singleLine = true,
+              modifier = Modifier.weight(1f).testTag("add_expense_advance_input")
+            )
+          }
+
+          // Remaining Due Indicator
+          val totalAmt = expenseAmount.toDoubleOrNull() ?: 0.0
+          val advAmt = advancePaidText.toDoubleOrNull() ?: 0.0
+          val remDue = (totalAmt - advAmt).coerceAtLeast(0.0)
+          if (totalAmt > 0) {
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = if (remDue > 0) WarningAmber.copy(alpha = 0.12f) else SuccessGreen.copy(alpha = 0.12f)
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = if (language == "bn") "অবশিষ্ট বাকি:" else "Remaining Due:",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = TextMuted
+                )
+                Text(
+                  text = formatCurrency(remDue, currencySymbol),
+                  style = MaterialTheme.typography.labelMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = if (remDue > 0) WarningAmber else SuccessGreen
+                )
+              }
+            }
+          }
+
+          // Payment Due Date picker button
+          val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+          val formattedDueDate = if (dueDateMillis != null) dateFormat.format(java.util.Date(dueDateMillis!!)) else null
+
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+              text = if (language == "bn") "পরিশোধের শেষ তারিখ" else "Payment Due Date",
+              style = MaterialTheme.typography.labelMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Surface(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, if (dueDateMillis != null) DeepPlum else BorderSubtle, RoundedCornerShape(10.dp))
+                .clickable {
+                  val c = Calendar.getInstance()
+                  if (dueDateMillis != null) c.timeInMillis = dueDateMillis!!
+                  DatePickerDialog(
+                    context,
+                    { _, y, m, d ->
+                      val sel = Calendar.getInstance()
+                      sel.set(y, m, d, 0, 0, 0)
+                      sel.set(Calendar.MILLISECOND, 0)
+                      dueDateMillis = sel.timeInMillis
+                    },
+                    c.get(Calendar.YEAR),
+                    c.get(Calendar.MONTH),
+                    c.get(Calendar.DAY_OF_MONTH)
+                  ).show()
+                }
+                .testTag("add_expense_due_date_picker"),
+              color = if (dueDateMillis != null) DeepPlum.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surface
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = null,
+                    tint = if (dueDateMillis != null) DeepPlum else TextMuted,
+                    modifier = Modifier.size(18.dp)
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = formattedDueDate ?: (if (language == "bn") "তারিখ নির্ধারণ করুন..." else "Select Payment Due Date..."),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (dueDateMillis != null) MaterialTheme.colorScheme.onSurface else TextMuted
+                  )
+                }
+
+                if (dueDateMillis != null) {
+                  IconButton(
+                    onClick = { dueDateMillis = null },
+                    modifier = Modifier.size(24.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.Close,
+                      contentDescription = "Clear date",
+                      tint = TextMuted,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+                }
+              }
+            }
+          }
 
           // 3. Category Section (Header + Custom Input + Chips)
           Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -783,14 +1121,19 @@ fun BudgetScreen(
         Button(
           onClick = {
             val amount = expenseAmount.toDoubleOrNull() ?: 0.0
+            val advance = advancePaidText.toDoubleOrNull() ?: 0.0
             val due = dueAmountText.toDoubleOrNull() ?: 0.0
+            val calculatedDue = (amount - advance).coerceAtLeast(0.0)
+            val finalDue = if (paymentStatus.equals("Paid", ignoreCase = true)) 0.0
+            else if (due > 0.0) due
+            else calculatedDue
             val finalCategory = if (showCustomCategoryInput && customCategoryNameInput.isNotBlank()) {
               customCategoryNameInput.trim()
             } else {
               selectedCategory.ifBlank { "Other" }
             }
             if (expenseName.isNotBlank() && amount > 0) {
-              onAddExpense(expenseName.trim(), finalCategory, amount, paymentStatus, due)
+              onAddExpense(expenseName.trim(), finalCategory, amount, paymentStatus, finalDue, advance, dueDateMillis)
               showAddExpenseDialog = false
             }
           },
@@ -806,5 +1149,532 @@ fun BudgetScreen(
         }
       }
     )
+  }
+}
+
+@Composable
+fun PaymentScheduleTabContent(
+  scheduledItems: List<Triple<ExpenseEntity, Double, PaymentDueGroup>>,
+  totalScheduleDue: Double,
+  totalAdvancePaid: Double,
+  overdueCount: Int,
+  dueThisWeekCount: Int,
+  currencySymbol: String,
+  language: String,
+  onAddDue: () -> Unit,
+  onMarkPaid: (ExpenseEntity) -> Unit,
+  onDeleteExpense: (ExpenseEntity) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  LazyColumn(
+    modifier = modifier
+      .fillMaxSize()
+      .padding(horizontal = 20.dp)
+  ) {
+    // 1. Summary Metrics Card
+    item {
+      Spacer(modifier = Modifier.height(16.dp))
+      Surface(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(20.dp))
+          .border(1.dp, BorderSubtle, RoundedCornerShape(20.dp)),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
+      ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column {
+              Text(
+                text = if (language == "bn") "মোট বকেয়া পেমেন্ট" else "Total Due to Vendors",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted
+              )
+              Text(
+                text = formatCurrency(totalScheduleDue, currencySymbol),
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = if (totalScheduleDue > 0) WarningAmber else SuccessGreen
+              )
+            }
+
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = AccentGold.copy(alpha = 0.15f),
+              modifier = Modifier
+                .clickable { onAddDue() }
+                .testTag("budget_add_due_cta")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = PlumDark, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (language == "bn") "পেমেন্ট যোগ" else "+ Add Due",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = PlumDark
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Badges row: Overdue, Due this week, Advance Paid
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            // Overdue
+            Surface(
+              modifier = Modifier.weight(1f),
+              shape = RoundedCornerShape(12.dp),
+              color = if (overdueCount > 0) DangerRed.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+              border = androidx.compose.foundation.BorderStroke(1.dp, if (overdueCount > 0) DangerRed.copy(alpha = 0.3f) else Color.Transparent)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                  text = if (language == "bn") "মেয়াদোত্তীর্ণ" else "Overdue",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = if (overdueCount > 0) DangerRed else TextMuted
+                )
+                Text(
+                  text = "$overdueCount",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = if (overdueCount > 0) DangerRed else MaterialTheme.colorScheme.onSurface
+                )
+              }
+            }
+
+            // Due This Week
+            Surface(
+              modifier = Modifier.weight(1f),
+              shape = RoundedCornerShape(12.dp),
+              color = if (dueThisWeekCount > 0) WarningAmber.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+              border = androidx.compose.foundation.BorderStroke(1.dp, if (dueThisWeekCount > 0) WarningAmber.copy(alpha = 0.3f) else Color.Transparent)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                  text = if (language == "bn") "এই সপ্তাহে" else "This Week",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = if (dueThisWeekCount > 0) WarningAmber else TextMuted
+                )
+                Text(
+                  text = "$dueThisWeekCount",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = if (dueThisWeekCount > 0) WarningAmber else MaterialTheme.colorScheme.onSurface
+                )
+              }
+            }
+
+            // Advance Paid
+            Surface(
+              modifier = Modifier.weight(1.2f),
+              shape = RoundedCornerShape(12.dp),
+              color = Emerald.copy(alpha = 0.1f)
+            ) {
+              Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                  text = if (language == "bn") "মোট অগ্রিম" else "Advance Paid",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = Emerald
+                )
+                Text(
+                  text = formatCurrency(totalAdvancePaid, currencySymbol),
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = Emerald,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (scheduledItems.isEmpty()) {
+      item {
+        Spacer(modifier = Modifier.height(40.dp))
+        Surface(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp)),
+          color = MaterialTheme.colorScheme.surface
+        ) {
+          Column(
+            modifier = Modifier.padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+          ) {
+            Icon(
+              imageVector = Icons.Default.EventNote,
+              contentDescription = null,
+              tint = TextMuted.copy(alpha = 0.5f),
+              modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+              text = if (language == "bn") "কোনো পেমেন্ট শিডিউল নেই" else "No payment schedule set",
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+              text = if (language == "bn")
+                "ভেন্ডর খরচ যোগ করার সময় শেষ তারিখ ও অগ্রিম পেমেন্ট নির্ধারণ করুন।"
+              else
+                "Assign due dates and advance paid amounts to track upcoming vendor deadlines.",
+              style = MaterialTheme.typography.bodySmall,
+              color = TextMuted,
+              textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+              onClick = onAddDue,
+              colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+            ) {
+              Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(if (language == "bn") "ভেন্ডর পেমেন্ট যোগ করুন" else "Add Vendor Payment")
+            }
+          }
+        }
+      }
+    } else {
+      val overdueItems = scheduledItems.filter { it.third == PaymentDueGroup.OVERDUE }
+      val dueThisWeekItems = scheduledItems.filter { it.third == PaymentDueGroup.DUE_THIS_WEEK }
+      val upcomingItems = scheduledItems.filter { it.third == PaymentDueGroup.UPCOMING }
+
+      // Group 1: OVERDUE
+      if (overdueItems.isNotEmpty()) {
+        item {
+          Spacer(modifier = Modifier.height(20.dp))
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = DangerRed, modifier = Modifier.size(8.dp)) {}
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = if (language == "bn") "মেয়াদোত্তীর্ণ পেমেন্ট (${overdueItems.size})" else "Overdue Payments (${overdueItems.size})",
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.Bold,
+              color = DangerRed
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        items(overdueItems, key = { it.first.id }) { item ->
+          PaymentScheduleCard(
+            item = item,
+            currencySymbol = currencySymbol,
+            language = language,
+            onMarkPaid = { onMarkPaid(item.first) },
+            onDelete = { onDeleteExpense(item.first) }
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+      }
+
+      // Group 2: DUE THIS WEEK
+      if (dueThisWeekItems.isNotEmpty()) {
+        item {
+          Spacer(modifier = Modifier.height(20.dp))
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = WarningAmber, modifier = Modifier.size(8.dp)) {}
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = if (language == "bn") "এই সপ্তাহে বাকি (${dueThisWeekItems.size})" else "Due This Week (${dueThisWeekItems.size})",
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.Bold,
+              color = WarningAmber
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        items(dueThisWeekItems, key = { it.first.id }) { item ->
+          PaymentScheduleCard(
+            item = item,
+            currencySymbol = currencySymbol,
+            language = language,
+            onMarkPaid = { onMarkPaid(item.first) },
+            onDelete = { onDeleteExpense(item.first) }
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+      }
+
+      // Group 3: UPCOMING & SETTLED
+      if (upcomingItems.isNotEmpty()) {
+        item {
+          Spacer(modifier = Modifier.height(20.dp))
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = SuccessGreen, modifier = Modifier.size(8.dp)) {}
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = if (language == "bn") "আসন্ন ও পরিশোধিত (${upcomingItems.size})" else "Upcoming & Settled (${upcomingItems.size})",
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        items(upcomingItems, key = { it.first.id }) { item ->
+          PaymentScheduleCard(
+            item = item,
+            currencySymbol = currencySymbol,
+            language = language,
+            onMarkPaid = { onMarkPaid(item.first) },
+            onDelete = { onDeleteExpense(item.first) }
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+        }
+      }
+    }
+
+    item {
+      Spacer(modifier = Modifier.height(40.dp))
+    }
+  }
+}
+
+@Composable
+fun PaymentScheduleCard(
+  item: Triple<ExpenseEntity, Double, PaymentDueGroup>,
+  currencySymbol: String,
+  language: String,
+  onMarkPaid: () -> Unit,
+  onDelete: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  val expense = item.first
+  val remainingDue = item.second
+  val group = item.third
+  val isPaid = expense.paymentStatus.equals("Paid", ignoreCase = true) || remainingDue <= 0.0
+
+  val cal = Calendar.getInstance()
+  cal.set(Calendar.HOUR_OF_DAY, 0)
+  cal.set(Calendar.MINUTE, 0)
+  cal.set(Calendar.SECOND, 0)
+  cal.set(Calendar.MILLISECOND, 0)
+  val todayMillis = cal.timeInMillis
+
+  val dueMillis = expense.dueDate ?: 0L
+  val diffDays = TimeUnit.MILLISECONDS.toDays(dueMillis - todayMillis)
+  val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+  val formattedDate = if (dueMillis > 0) dateFormat.format(java.util.Date(dueMillis)) else ""
+
+  val (badgeBg, badgeText, badgeColor) = when {
+    isPaid -> Triple(SuccessGreen.copy(alpha = 0.15f), if (language == "bn") "পরিশোধিত" else "Paid in Full", SuccessGreen)
+    group == PaymentDueGroup.OVERDUE -> Triple(
+      DangerRed.copy(alpha = 0.15f),
+      if (language == "bn") "${-diffDays} দিন মেয়াদোত্তীর্ণ" else "Overdue by ${-diffDays}d",
+      DangerRed
+    )
+    diffDays == 0L -> Triple(
+      WarningAmber.copy(alpha = 0.2f),
+      if (language == "bn") "আজ বাকি" else "Due Today",
+      WarningAmber
+    )
+    diffDays in 1..7 -> Triple(
+      WarningAmber.copy(alpha = 0.15f),
+      if (language == "bn") "${diffDays} দিনে বাকি" else "Due in ${diffDays}d",
+      WarningAmber
+    )
+    else -> Triple(
+      DeepPlum.copy(alpha = 0.1f),
+      if (language == "bn") "${diffDays} দিনে বাকি" else "Due in ${diffDays}d",
+      DeepPlum
+    )
+  }
+
+  Surface(
+    modifier = modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(16.dp))
+      .border(
+        1.dp,
+        when {
+          isPaid -> BorderSubtle
+          group == PaymentDueGroup.OVERDUE -> DangerRed.copy(alpha = 0.4f)
+          group == PaymentDueGroup.DUE_THIS_WEEK -> WarningAmber.copy(alpha = 0.4f)
+          else -> BorderSubtle
+        },
+        RoundedCornerShape(16.dp)
+      ),
+    color = MaterialTheme.colorScheme.surface,
+    tonalElevation = 1.dp
+  ) {
+    Column(modifier = Modifier.padding(14.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          modifier = Modifier.weight(1f),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Surface(
+            shape = CircleShape,
+            color = getCategoryColor(expense.category).copy(alpha = 0.15f),
+            modifier = Modifier.size(36.dp)
+          ) {
+            Box(contentAlignment = Alignment.Center) {
+              Icon(
+                imageVector = getCategoryIcon(expense.category),
+                contentDescription = null,
+                tint = getCategoryColor(expense.category),
+                modifier = Modifier.size(18.dp)
+              )
+            }
+          }
+          Spacer(modifier = Modifier.width(10.dp))
+          Column {
+            Text(
+              text = expense.name,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            Text(
+              text = expense.category,
+              style = MaterialTheme.typography.bodySmall,
+              color = TextMuted
+            )
+          }
+        }
+
+        // Status Badge
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = badgeBg
+        ) {
+          Text(
+            text = badgeText,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = badgeColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      // Amount Row: Total | Advance Paid | Remaining Due
+      Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column {
+            Text(text = if (language == "bn") "মোট" else "Total", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(text = formatCurrency(expense.amount, currencySymbol), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+          }
+
+          Column {
+            Text(text = if (language == "bn") "অগ্রিম" else "Advance", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(text = formatCurrency(expense.advancePaid, currencySymbol), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = Emerald)
+          }
+
+          Column(horizontalAlignment = Alignment.End) {
+            Text(text = if (language == "bn") "বাকি" else "Due", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(
+              text = if (isPaid) formatCurrency(0.0, currencySymbol) else formatCurrency(remainingDue, currencySymbol),
+              style = MaterialTheme.typography.bodyMedium,
+              fontWeight = FontWeight.Bold,
+              color = if (isPaid) SuccessGreen else if (group == PaymentDueGroup.OVERDUE) DangerRed else WarningAmber
+            )
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Footer: Due Date + Action Buttons
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Default.CalendarToday,
+            contentDescription = null,
+            tint = TextMuted,
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(4.dp))
+          Text(
+            text = if (formattedDate.isNotBlank()) "${if (language == "bn") "তারিখ:" else "Due:"} $formattedDate" else "",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted
+          )
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          if (!isPaid) {
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = SuccessGreen.copy(alpha = 0.15f),
+              modifier = Modifier
+                .clickable { onMarkPaid() }
+                .testTag("mark_paid_button_${expense.id}")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                  text = if (language == "bn") "পরিশোধ" else "Mark Paid",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = SuccessGreen
+                )
+              }
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+          }
+
+          IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(28.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Default.Delete,
+              contentDescription = "Delete",
+              tint = TextMuted.copy(alpha = 0.6f),
+              modifier = Modifier.size(16.dp)
+            )
+          }
+        }
+      }
+    }
   }
 }

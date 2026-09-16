@@ -69,6 +69,19 @@ object AppStrings {
       "planned_budget" -> if (isBangla) "পরিকল্পিত বাজেট" else "Planned budget"
       "due" -> if (isBangla) "বাকি" else "Due"
       "paid" -> if (isBangla) "পরিশোধিত" else "Paid"
+      "payment_schedule" -> if (isBangla) "পেমেন্ট শিডিউল" else "Payment Schedule"
+      "payments_due" -> if (isBangla) "পেমেন্ট বাকি" else "Payments Due"
+      "overdue" -> if (isBangla) "মেয়াদোত্তীর্ণ" else "Overdue"
+      "due_this_week" -> if (isBangla) "এই সপ্তাহে বাকি" else "Due This Week"
+      "upcoming" -> if (isBangla) "আসন্ন" else "Upcoming"
+      "due_date" -> if (isBangla) "পরিশোধের শেষ তারিখ" else "Payment Due Date"
+      "advance_paid" -> if (isBangla) "অগ্রিম পরিশোধ" else "Advance Paid"
+      "remaining_due" -> if (isBangla) "অবশিষ্ট বাকি" else "Remaining Due"
+      "schedule" -> if (isBangla) "সময়সূচী" else "Schedule"
+      "add_function" -> if (isBangla) "+ ফাংশন যোগ" else "+ Add Function"
+      "multi_day_schedule" -> if (isBangla) "মাল্টি-ডে সময়সূচী" else "Multi-Day Schedule"
+      "no_payment_schedule" -> if (isBangla) "কোনো নির্ধারিত পেমেন্ট শিডিউল নেই" else "No payment schedule set"
+      "all_payments_clear" -> if (isBangla) "সব ভেন্ডর পেমেন্ট পরিশোধিত!" else "All vendor payments are clear!"
       else -> key
     }
   }

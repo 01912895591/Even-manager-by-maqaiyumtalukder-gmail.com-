@@ -5,6 +5,7 @@ import com.example.data.model.AppSettingsEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
+import com.example.data.model.EventDayEntity
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
@@ -27,6 +28,9 @@ class EventRepository(private val db: AppDatabase) {
 
   fun getChecklistForEvent(eventId: Long): Flow<List<ChecklistItemEntity>> =
     db.checklistDao().getItemsForEvent(eventId)
+
+  fun getEventDays(eventId: Long): Flow<List<EventDayEntity>> =
+    db.eventDayDao().getDaysForEvent(eventId)
 
   fun getExpensesForEvent(eventId: Long): Flow<List<ExpenseEntity>> =
     db.expenseDao().getExpensesForEvent(eventId)
@@ -75,6 +79,23 @@ class EventRepository(private val db: AppDatabase) {
 
   suspend fun deleteChecklistItem(item: ChecklistItemEntity) = withContext(Dispatchers.IO) {
     db.checklistDao().deleteItem(item)
+  }
+
+  // Event Days (Multi-day functions)
+  suspend fun insertEventDay(day: EventDayEntity): Long = withContext(Dispatchers.IO) {
+    db.eventDayDao().insertEventDay(day)
+  }
+
+  suspend fun updateEventDay(day: EventDayEntity) = withContext(Dispatchers.IO) {
+    db.eventDayDao().updateEventDay(day)
+  }
+
+  suspend fun deleteEventDay(day: EventDayEntity) = withContext(Dispatchers.IO) {
+    db.eventDayDao().deleteEventDay(day)
+  }
+
+  suspend fun deleteEventDayById(id: Long) = withContext(Dispatchers.IO) {
+    db.eventDayDao().deleteEventDayById(id)
   }
 
   // Expense CRUD

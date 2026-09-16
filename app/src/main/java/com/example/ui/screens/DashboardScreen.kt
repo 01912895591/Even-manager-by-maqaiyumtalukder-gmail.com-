@@ -85,7 +85,9 @@ import com.example.ui.theme.DeepPlum
 import com.example.ui.theme.PlumDark
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextMuted
+import com.example.ui.theme.WarningAmber
 import com.example.ui.util.AppStrings
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 private fun formatCompactAmount(amount: Double, currency: String = "৳"): String {
@@ -690,6 +692,146 @@ fun DashboardScreen(
                   modifier = Modifier.weight(1f),
                   testTag = "dashboard_quick_add_expense"
                 )
+              }
+            }
+          }
+        }
+
+        // Payments Due Summary Card (Feature 1)
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val todayStart = cal.timeInMillis
+        val weekEnd = todayStart + (7L * 24 * 60 * 60 * 1000)
+
+        val dueExpenses = expenses.filter { exp ->
+          val remDue = if (exp.dueAmount > 0) exp.dueAmount else (exp.amount - exp.advancePaid).coerceAtLeast(0.0)
+          !exp.paymentStatus.equals("Paid", ignoreCase = true) && remDue > 0.0 && exp.dueDate != null
+        }
+        val overdueCount = dueExpenses.count { (it.dueDate ?: 0L) < todayStart }
+        val dueThisWeekCount = dueExpenses.count { (it.dueDate ?: 0L) in todayStart..weekEnd }
+        val totalDueAmount = dueExpenses.sumOf { if (it.dueAmount > 0) it.dueAmount else (it.amount - it.advancePaid).coerceAtLeast(0.0) }
+
+        if (overdueCount > 0 || dueThisWeekCount > 0 || dueExpenses.isNotEmpty()) {
+          item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                  1.dp,
+                  if (overdueCount > 0) DangerRed.copy(alpha = 0.5f) else AccentGold.copy(alpha = 0.5f),
+                  RoundedCornerShape(16.dp)
+                )
+                .clickable { onAddExpenseClick(spotlightEvent?.id) }
+                .testTag("dashboard_payments_due_card"),
+              color = MaterialTheme.colorScheme.surface,
+              tonalElevation = 2.dp
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(
+                  modifier = Modifier.weight(1f),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Surface(
+                    shape = CircleShape,
+                    color = if (overdueCount > 0) DangerRed.copy(alpha = 0.15f) else WarningAmber.copy(alpha = 0.15f),
+                    modifier = Modifier.size(42.dp)
+                  ) {
+                    Box(contentAlignment = Alignment.Center) {
+                      Icon(
+                        imageVector = if (overdueCount > 0) Icons.Default.Paid else Icons.Default.AccountBalanceWallet,
+                        contentDescription = "Payments Due",
+                        tint = if (overdueCount > 0) DangerRed else WarningAmber,
+                        modifier = Modifier.size(22.dp)
+                      )
+                    }
+                  }
+
+                  Spacer(modifier = Modifier.width(12.dp))
+
+                  Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Text(
+                        text = if (language == "bn") "বকেয়া ভেন্ডর পেমেন্ট" else "Vendor Payments Due",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                      )
+                      if (overdueCount > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                          shape = RoundedCornerShape(6.dp),
+                          color = DangerRed
+                        ) {
+                          Text(
+                            text = if (language == "bn") "$overdueCount মেয়াদোত্তীর্ণ" else "$overdueCount Overdue",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                          )
+                        }
+                      }
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    val statusSubtitle = buildString {
+                      if (overdueCount > 0) {
+                        append(if (language == "bn") "$overdueCount মেয়াদোত্তীর্ণ" else "$overdueCount overdue")
+                      }
+                      if (dueThisWeekCount > 0) {
+                        if (isNotEmpty()) append(" • ")
+                        append(if (language == "bn") "$dueThisWeekCount এই সপ্তাহে" else "$dueThisWeekCount due this week")
+                      }
+                      if (isEmpty()) {
+                        append(if (language == "bn") "${dueExpenses.size}টি পেমেন্ট বাকি" else "${dueExpenses.size} payments scheduled")
+                      }
+                    }
+
+                    Text(
+                      text = statusSubtitle,
+                      style = MaterialTheme.typography.bodySmall,
+                      color = if (overdueCount > 0) DangerRed else TextMuted
+                    )
+                  }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                      text = formatCompactAmount(totalDueAmount),
+                      style = MaterialTheme.typography.titleMedium,
+                      fontWeight = FontWeight.Bold,
+                      color = if (overdueCount > 0) DangerRed else WarningAmber
+                    )
+                    Text(
+                      text = if (language == "bn") "সময়সূচী দেখুন" else "View schedule",
+                      fontSize = 11.sp,
+                      color = DeepPlum,
+                      fontWeight = FontWeight.SemiBold
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = DeepPlum,
+                    modifier = Modifier.size(16.dp)
+                  )
+                }
               }
             }
           }

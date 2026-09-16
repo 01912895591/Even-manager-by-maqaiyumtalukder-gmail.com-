@@ -10,12 +10,14 @@ import com.example.data.dao.ChecklistDao
 import com.example.data.dao.ContactDao
 import com.example.data.dao.EventContactDao
 import com.example.data.dao.EventDao
+import com.example.data.dao.EventDayDao
 import com.example.data.dao.ExpenseDao
 import com.example.data.dao.UserDao
 import com.example.data.model.AppSettingsEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
+import com.example.data.model.EventDayEntity
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
@@ -28,18 +30,20 @@ import kotlinx.coroutines.launch
   entities = [
     UserEntity::class,
     EventEntity::class,
+    EventDayEntity::class,
     ChecklistItemEntity::class,
     ExpenseEntity::class,
     ContactEntity::class,
     EventContactCrossRef::class,
     AppSettingsEntity::class
   ],
-  version = 8,
+  version = 9,
   exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
   abstract fun userDao(): UserDao
   abstract fun eventDao(): EventDao
+  abstract fun eventDayDao(): EventDayDao
   abstract fun checklistDao(): ChecklistDao
   abstract fun expenseDao(): ExpenseDao
   abstract fun contactDao(): ContactDao

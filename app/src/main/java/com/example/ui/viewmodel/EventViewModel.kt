@@ -8,6 +8,7 @@ import com.example.data.model.AppSettingsEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
+import com.example.data.model.EventDayEntity
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
@@ -23,6 +24,26 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+
+enum class PaymentDueGroup {
+  OVERDUE,
+  DUE_THIS_WEEK,
+  UPCOMING
+}
+
+data class UpcomingPaymentItem(
+  val expense: ExpenseEntity,
+  val eventTitle: String,
+  val eventCategory: String,
+  val remainingDue: Double,
+  val daysDiff: Long,
+  val group: PaymentDueGroup,
+  val formattedDueDate: String
+)
 
 data class CategoryExpenseSummary(
   val category: String,
@@ -104,6 +125,62 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
       if (id != null) repository.getEventContactsForEvent(id) else flowOf(emptyList())
     }
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val selectedEventDays: StateFlow<List<EventDayEntity>> = _selectedEventId
+    .flatMapLatest { id ->
+      if (id != null) repository.getEventDays(id) else flowOf(emptyList())
+    }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val upcomingPayments: StateFlow<List<UpcomingPaymentItem>> = combine(
+    allEvents,
+    allExpenses
+  ) { eventsList, expensesList ->
+    val cal = Calendar.getInstance()
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    val startOfToday = cal.timeInMillis
+    val endOfSevenDays = startOfToday + TimeUnit.DAYS.toMillis(7)
+
+    val eventMap = eventsList.associateBy { it.id }
+    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+
+    expensesList
+      .filter { it.dueDate != null }
+      .mapNotNull { expense ->
+        val event = eventMap[expense.eventId] ?: return@mapNotNull null
+        val dueMillis = expense.dueDate!!
+        val remainingDue = if (expense.paymentStatus.equals("Paid", ignoreCase = true)) 0.0
+        else if (expense.dueAmount > 0.0) expense.dueAmount
+        else (expense.amount - expense.advancePaid).coerceAtLeast(0.0)
+
+        val diffDays = TimeUnit.MILLISECONDS.toDays(dueMillis - startOfToday)
+        val group = when {
+          dueMillis < startOfToday && remainingDue > 0.0 -> PaymentDueGroup.OVERDUE
+          dueMillis in startOfToday..endOfSevenDays && remainingDue > 0.0 -> PaymentDueGroup.DUE_THIS_WEEK
+          else -> PaymentDueGroup.UPCOMING
+        }
+
+        UpcomingPaymentItem(
+          expense = expense,
+          eventTitle = event.title,
+          eventCategory = event.category,
+          remainingDue = remainingDue,
+          daysDiff = diffDays,
+          group = group,
+          formattedDueDate = dateFormat.format(java.util.Date(dueMillis))
+        )
+      }
+      .sortedWith(compareBy<UpcomingPaymentItem> {
+        when (it.group) {
+          PaymentDueGroup.OVERDUE -> 0
+          PaymentDueGroup.DUE_THIS_WEEK -> 1
+          PaymentDueGroup.UPCOMING -> 2
+        }
+      }.thenBy { it.expense.dueDate ?: Long.MAX_VALUE })
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   // Budget calculations for selected event
   val selectedEventBudgetSummary: StateFlow<EventBudgetSummary> = combine(
@@ -329,6 +406,43 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  // Event Day Actions (Multi-day events)
+  fun addEventDay(
+    dayTitle: String,
+    dateFormatted: String,
+    timeFormatted: String,
+    dateTimeMillis: Long,
+    location: String,
+    notes: String = ""
+  ) {
+    val currentId = _selectedEventId.value ?: return
+    viewModelScope.launch {
+      repository.insertEventDay(
+        EventDayEntity(
+          eventId = currentId,
+          dayTitle = dayTitle.trim().ifBlank { "Event Day" },
+          dateFormatted = dateFormatted,
+          timeFormatted = timeFormatted,
+          dateTimeMillis = dateTimeMillis,
+          location = location.trim(),
+          notes = notes.trim()
+        )
+      )
+    }
+  }
+
+  fun updateEventDay(day: EventDayEntity) {
+    viewModelScope.launch {
+      repository.updateEventDay(day)
+    }
+  }
+
+  fun deleteEventDay(day: EventDayEntity) {
+    viewModelScope.launch {
+      repository.deleteEventDay(day)
+    }
+  }
+
   // Expense Actions
   fun addExpense(
     name: String,
@@ -336,11 +450,17 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     amount: Double,
     paymentStatus: String,
     dueAmount: Double = 0.0,
+    advancePaid: Double = 0.0,
+    dueDate: Long? = null,
     note: String = "",
     date: String = "Today",
     explicitEventId: Long? = null
   ) {
     val currentId = explicitEventId ?: _selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: return
+    val computedDue = if (paymentStatus.equals("Paid", ignoreCase = true)) 0.0
+    else if (dueAmount > 0.0) dueAmount
+    else (amount - advancePaid).coerceAtLeast(0.0)
+
     viewModelScope.launch {
       repository.insertExpense(
         ExpenseEntity(
@@ -349,11 +469,19 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
           category = category,
           amount = amount,
           paymentStatus = paymentStatus,
-          dueAmount = dueAmount,
+          dueAmount = computedDue,
+          advancePaid = advancePaid,
+          dueDate = dueDate,
           note = note,
           date = date
         )
       )
+    }
+  }
+
+  fun updateExpense(expense: ExpenseEntity) {
+    viewModelScope.launch {
+      repository.updateExpense(expense)
     }
   }
 
