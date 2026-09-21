@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -223,11 +226,20 @@ fun NewEventScreen(
 
   val categories = listOf("Wedding", "Eid", "Birthday", "Aqiqah", "Funeral", "Custom")
 
-  Column(
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .background(MaterialTheme.colorScheme.background)
+      .background(MaterialTheme.colorScheme.background),
+    contentAlignment = Alignment.TopCenter
   ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .widthIn(max = 600.dp)
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize()
+      ) {
     // Top Bar with Close (X) Icon & Title
     Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -640,9 +652,17 @@ fun NewEventScreen(
     Surface(
       modifier = Modifier.fillMaxWidth(),
       color = MaterialTheme.colorScheme.surface,
-      tonalElevation = 6.dp
+      tonalElevation = 8.dp,
+      border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
     ) {
-      Box(modifier = Modifier.padding(16.dp)) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .navigationBarsPadding()
+          .imePadding()
+          .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+      ) {
         Button(
           onClick = {
             if (title.isBlank()) {
@@ -666,6 +686,7 @@ fun NewEventScreen(
           },
           modifier = Modifier
             .fillMaxWidth()
+            .widthIn(max = 480.dp)
             .height(52.dp)
             .testTag("new_event_submit_button"),
           shape = RoundedCornerShape(12.dp),
@@ -681,6 +702,8 @@ fun NewEventScreen(
           )
         }
       }
+    }
+  }
     }
   }
 

@@ -127,6 +127,8 @@ fun EventManagerApp(viewModel: EventViewModel) {
   val selectedEventBudgetSummary by viewModel.selectedEventBudgetSummary.collectAsStateWithLifecycle()
   val selectedEventGuestSummary by viewModel.selectedEventGuestSummary.collectAsStateWithLifecycle()
   val selectedEventDays by viewModel.selectedEventDays.collectAsStateWithLifecycle()
+  val selectedCateringPlan by viewModel.selectedCateringPlan.collectAsStateWithLifecycle()
+  val cateringEstimate by viewModel.cateringEstimate.collectAsStateWithLifecycle()
 
   val contactSearchQuery by viewModel.contactSearchQuery.collectAsStateWithLifecycle()
   val contactFilter by viewModel.contactFilter.collectAsStateWithLifecycle()
@@ -468,6 +470,15 @@ fun EventManagerApp(viewModel: EventViewModel) {
           },
           onDeleteEventDay = { day ->
             viewModel.deleteEventDay(day)
+          },
+          cateringPlan = selectedCateringPlan,
+          cateringEstimate = cateringEstimate,
+          onSaveCateringPlan = { perPlate, buffer ->
+            viewModel.saveCateringPlanForSelectedEvent(perPlate, buffer)
+          },
+          onAddCateringToBudget = { estimatedCost, recommendedPlates, perPlateCost, bufferPercent ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.addOrUpdateCateringExpense(eventId, estimatedCost, recommendedPlates, perPlateCost, bufferPercent)
           }
         )
       }

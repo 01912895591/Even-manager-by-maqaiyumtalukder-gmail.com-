@@ -153,3 +153,23 @@ data class AppSettingsEntity(
   val googleWebClientId: String = "755771767239-uhtf0nttaosh42kcs3g90hmq9enqj0q1.apps.googleusercontent.com",
   val autoLoginWithGoogleEnabled: Boolean = true
 )
+
+@Entity(
+  tableName = "catering_plans",
+  foreignKeys = [
+    ForeignKey(
+      entity = EventEntity::class,
+      parentColumns = ["id"],
+      childColumns = ["eventId"],
+      onDelete = ForeignKey.CASCADE
+    )
+  ],
+  indices = [Index(value = ["eventId"], unique = true)]
+)
+data class CateringPlanEntity(
+  @PrimaryKey(autoGenerate = true) val id: Long = 0,
+  val eventId: Long,
+  val perPlateCost: Double = 0.0,
+  val bufferPercent: Int = 10,
+  val notes: String = ""
+)

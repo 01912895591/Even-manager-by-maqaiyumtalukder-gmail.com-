@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.AppDatabase
 import com.example.data.model.AppSettingsEntity
+import com.example.data.model.CateringPlanEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
@@ -37,6 +38,9 @@ class EventRepository(private val db: AppDatabase) {
 
   fun getEventContactsForEvent(eventId: Long): Flow<List<EventContactCrossRef>> =
     db.eventContactDao().getEventContactsForEvent(eventId)
+
+  fun getCateringPlan(eventId: Long): Flow<CateringPlanEntity?> =
+    db.cateringPlanDao().getCateringPlan(eventId)
 
   suspend fun ensureDataInitialized() {
     withContext(Dispatchers.IO) {
@@ -96,6 +100,21 @@ class EventRepository(private val db: AppDatabase) {
 
   suspend fun deleteEventDayById(id: Long) = withContext(Dispatchers.IO) {
     db.eventDayDao().deleteEventDayById(id)
+  }
+
+  // Catering Plan CRUD
+  suspend fun saveCateringPlan(plan: CateringPlanEntity): Long = withContext(Dispatchers.IO) {
+    val existing = db.cateringPlanDao().getCateringPlanOnce(plan.eventId)
+    if (existing != null) {
+      db.cateringPlanDao().updateCateringPlan(plan.copy(id = existing.id))
+      existing.id
+    } else {
+      db.cateringPlanDao().insertCateringPlan(plan)
+    }
+  }
+
+  suspend fun deleteCateringPlanByEventId(eventId: Long) = withContext(Dispatchers.IO) {
+    db.cateringPlanDao().deleteCateringPlanByEventId(eventId)
   }
 
   // Expense CRUD

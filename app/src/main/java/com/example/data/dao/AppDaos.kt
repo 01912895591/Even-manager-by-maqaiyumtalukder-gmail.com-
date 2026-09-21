@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.data.model.AppSettingsEntity
+import com.example.data.model.CateringPlanEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
@@ -173,4 +174,22 @@ interface EventDayDao {
 
   @Query("DELETE FROM event_days WHERE id = :id")
   suspend fun deleteEventDayById(id: Long)
+}
+
+@Dao
+interface CateringPlanDao {
+  @Query("SELECT * FROM catering_plans WHERE eventId = :eventId LIMIT 1")
+  fun getCateringPlan(eventId: Long): Flow<CateringPlanEntity?>
+
+  @Query("SELECT * FROM catering_plans WHERE eventId = :eventId LIMIT 1")
+  suspend fun getCateringPlanOnce(eventId: Long): CateringPlanEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertCateringPlan(plan: CateringPlanEntity): Long
+
+  @Update
+  suspend fun updateCateringPlan(plan: CateringPlanEntity)
+
+  @Query("DELETE FROM catering_plans WHERE eventId = :eventId")
+  suspend fun deleteCateringPlanByEventId(eventId: Long)
 }

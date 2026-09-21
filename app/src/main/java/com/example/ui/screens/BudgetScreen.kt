@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -121,11 +123,20 @@ fun BudgetScreen(
 
   val headerBg = if (event != null) getCategoryColor(event.category) else PlumDark
 
-  Column(
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .background(MaterialTheme.colorScheme.background)
+      .background(MaterialTheme.colorScheme.background),
+    contentAlignment = Alignment.TopCenter
   ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .widthIn(max = 600.dp)
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize()
+      ) {
     // 1. Header (Category-Colored: e.g. Emerald for Wedding, Plum for Eid)
     Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -624,7 +635,7 @@ fun BudgetScreen(
       }
 
       item {
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(96.dp))
       }
     }
   } else {
@@ -650,6 +661,26 @@ fun BudgetScreen(
     )
   }
 }
+
+      // Persistent Floating Action Button to Add Expense
+      FloatingActionButton(
+        onClick = { showAddExpenseDialog = true },
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .padding(end = 20.dp, bottom = 20.dp)
+          .testTag("budget_fab_add_expense"),
+        containerColor = AccentGold,
+        contentColor = PlumDark,
+        shape = CircleShape
+      ) {
+        Icon(
+          imageVector = Icons.Default.Add,
+          contentDescription = "Add Expense",
+          modifier = Modifier.size(28.dp)
+        )
+      }
+    }
+  }
 
   // Add Expense Dialog
   if (showAddExpenseDialog) {
@@ -1448,7 +1479,7 @@ fun PaymentScheduleTabContent(
     }
 
     item {
-      Spacer(modifier = Modifier.height(40.dp))
+      Spacer(modifier = Modifier.height(96.dp))
     }
   }
 }

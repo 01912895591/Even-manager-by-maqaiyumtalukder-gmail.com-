@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -202,11 +205,20 @@ fun AddContactsToEventScreen(
     }
   }
 
-  Column(
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .background(MaterialTheme.colorScheme.background)
+      .background(MaterialTheme.colorScheme.background),
+    contentAlignment = Alignment.TopCenter
   ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .widthIn(max = 600.dp)
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize()
+      ) {
     // Top Bar: Back Arrow + Title
     Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -526,13 +538,22 @@ fun AddContactsToEventScreen(
     Surface(
       modifier = Modifier.fillMaxWidth(),
       color = MaterialTheme.colorScheme.surface,
-      tonalElevation = 6.dp
+      tonalElevation = 8.dp,
+      border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
     ) {
-      Box(modifier = Modifier.padding(16.dp)) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .navigationBarsPadding()
+          .imePadding()
+          .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+      ) {
         Button(
           onClick = { onAddSelectedContacts(selectedContactIds) },
           modifier = Modifier
             .fillMaxWidth()
+            .widthIn(max = 480.dp)
             .height(52.dp)
             .testTag("add_guests_confirm_button"),
           shape = RoundedCornerShape(12.dp),
@@ -550,6 +571,8 @@ fun AddContactsToEventScreen(
           )
         }
       }
+    }
+  }
     }
   }
 

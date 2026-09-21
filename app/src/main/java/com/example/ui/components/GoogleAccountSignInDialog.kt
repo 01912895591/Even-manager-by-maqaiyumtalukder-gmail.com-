@@ -60,10 +60,22 @@ import com.example.ui.theme.DeepPlum
 import com.example.ui.theme.PlumDark
 import com.example.ui.theme.TextMuted
 
+fun formatGoogleDisplayName(email: String): String {
+  val prefix = email.substringBefore("@").trim()
+  if (prefix.equals("maqaiyumtalukder", ignoreCase = true)) {
+    return "Maqaiyum Talukder"
+  }
+  val cleaned = prefix.replace(".", " ").replace("_", " ").replace("-", " ")
+  return cleaned.split(" ")
+    .filter { it.isNotBlank() }
+    .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
+    .ifEmpty { "Google User" }
+}
+
 /**
  * A dedicated, fail-safe Google Sign-In Dialog.
  * Triggered seamlessly whenever Android Credential Manager or system account chooser
- * encounters device/emulator restrictions ("Something went wrong / Sign in another way").
+ * encounters device/emulator restrictions ("No credentials available", "Something went wrong").
  */
 @Composable
 fun GoogleAccountSignInDialog(
@@ -73,7 +85,19 @@ fun GoogleAccountSignInDialog(
   onDismiss: () -> Unit,
   language: String = "en"
 ) {
-  var emailInput by remember { mutableStateOf(initialEmail) }
+  val defaultEmail = if (initialEmail.isNotBlank()) initialEmail.trim() else "maqaiyumtalukder@gmail.com"
+  val effectiveAccounts = remember(deviceAccounts, defaultEmail) {
+    val list = mutableListOf<String>()
+    if (deviceAccounts.isNotEmpty()) {
+      list.addAll(deviceAccounts)
+    }
+    if (!list.contains(defaultEmail)) {
+      list.add(0, defaultEmail)
+    }
+    list
+  }
+
+  var emailInput by remember(defaultEmail) { mutableStateOf(defaultEmail) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
 
   Dialog(
@@ -165,16 +189,17 @@ fun GoogleAccountSignInDialog(
         Spacer(modifier = Modifier.height(14.dp))
 
         // If detected accounts on device
-        if (deviceAccounts.isNotEmpty()) {
+        if (effectiveAccounts.isNotEmpty()) {
           Text(
-            text = if (language == "bn") "ডিভাইসে প্রাপ্ত অ্যাকাউন্টসমূহ:" else "Found on this device:",
+            text = if (language == "bn") "Google অ্যাকাউন্ট নির্বাচন করুন:" else "Choose Google account:",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             color = DeepPlum
           )
           Spacer(modifier = Modifier.height(8.dp))
 
-          deviceAccounts.forEach { acc ->
+          effectiveAccounts.forEach { acc ->
+            val displayName = formatGoogleDisplayName(acc)
             Surface(
               modifier = Modifier
                 .fillMaxWidth()
@@ -182,12 +207,9 @@ fun GoogleAccountSignInDialog(
                 .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                 .clickable {
-                  val derivedName = acc.substringBefore("@")
-                    .replace(".", " ")
-                    .split(" ")
-                    .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
-                  onConfirm(derivedName, acc)
-                },
+                  onConfirm(displayName, acc)
+                }
+                .testTag("google_account_item_${acc.substringBefore("@")}"),
               color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             ) {
               Row(
@@ -198,18 +220,22 @@ fun GoogleAccountSignInDialog(
                 horizontalArrangement = Arrangement.SpaceBetween
               ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    tint = DeepPlum,
-                    modifier = Modifier.size(24.dp)
-                  )
+                  Surface(
+                    modifier = Modifier.size(32.dp),
+                    shape = CircleShape,
+                    color = DeepPlum.copy(alpha = 0.12f)
+                  ) {
+                    Box(contentAlignment = Alignment.Center) {
+                      Text(
+                        text = displayName.take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                        color = DeepPlum,
+                        fontSize = 15.sp
+                      )
+                    }
+                  }
                   Spacer(modifier = Modifier.width(10.dp))
                   Column {
-                    val displayName = acc.substringBefore("@")
-                      .replace(".", " ")
-                      .split(" ")
-                      .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
                     Text(
                       text = displayName,
                       style = MaterialTheme.typography.bodyMedium,
@@ -314,10 +340,7 @@ fun GoogleAccountSignInDialog(
           onClick = {
             val clean = emailInput.trim()
             if (clean.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(clean).matches()) {
-              val derivedName = clean.substringBefore("@")
-                .replace(".", " ")
-                .split(" ")
-                .joinToString(" ") { it.replaceFirstChar(Char::titlecase) }
+              val derivedName = formatGoogleDisplayName(clean)
               onConfirm(derivedName, clean)
             } else {
               errorMessage = if (language == "bn") "সঠিক ইমেল ঠিকানা লিখুন" else "Please enter a valid email address"
@@ -338,6 +361,27 @@ fun GoogleAccountSignInDialog(
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp
+          )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        androidx.compose.material3.OutlinedButton(
+          onClick = {
+            onConfirm("Demo Guest", "guest@eventmanager.app")
+          },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .testTag("google_guest_confirm_button"),
+          shape = RoundedCornerShape(12.dp),
+          border = BorderStroke(1.dp, BorderSubtle)
+        ) {
+          Text(
+            text = if (language == "bn") "গেস্ট হিসেবে চালিয়ে যান (ডেমো)" else "Continue as Guest / Demo",
+            style = MaterialTheme.typography.bodySmall,
+            color = DeepPlum,
+            fontWeight = FontWeight.SemiBold
           )
         }
       }

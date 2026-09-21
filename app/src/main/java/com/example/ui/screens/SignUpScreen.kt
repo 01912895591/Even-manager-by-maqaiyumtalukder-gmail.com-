@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +72,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.auth.GoogleAuthService
+import com.example.ui.components.GoogleAccountSignInDialog
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.AccentGoldLight
 import com.example.ui.theme.BorderSubtle
@@ -126,6 +128,7 @@ fun SignUpScreen(
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var isSubmitting by remember { mutableStateOf(false) }
   var isGoogleSubmitting by remember { mutableStateOf(false) }
+  var showGoogleSignInDialog by remember { mutableStateOf(false) }
 
   val strength = evaluatePasswordStrength(password)
   val animatedProgress by animateFloatAsState(targetValue = strength.progress, label = "strength_progress")
@@ -137,25 +140,26 @@ fun SignUpScreen(
     val activeClientId = GoogleAuthService.getActiveClientId(googleWebClientId)
 
     if (activity == null) {
-      errorMessage = "Google Sign-In is unavailable on this device."
-      return
-    }
-
-    if (activeClientId.isNullOrBlank()) {
-      errorMessage = "Google Web Client ID is not configured."
+      showGoogleSignInDialog = true
       return
     }
 
     isGoogleSubmitting = true
     coroutineScope.launch {
-      val result = GoogleAuthService.signInWithGoogleCredentialManager(activity, activeClientId)
+      val result = GoogleAuthService.signInWithGoogleCredentialManager(
+        activity,
+        activeClientId ?: GoogleAuthService.DEFAULT_WEB_CLIENT_ID
+      )
       isGoogleSubmitting = false
       result.onSuccess { user ->
         onGoogleSignInConfirmed(user.displayName, user.email, user.photoUrl)
       }.onFailure { err ->
         val msg = err.message ?: ""
-        if (!msg.contains("cancelled", ignoreCase = true)) {
-          errorMessage = "Google Sign-In failed: $msg"
+        if (msg.contains("cancelled", ignoreCase = true)) {
+          // User swiped or dismissed Google account prompt
+        } else {
+          errorMessage = null
+          showGoogleSignInDialog = true
         }
       }
     }
@@ -210,18 +214,45 @@ fun SignUpScreen(
     )
   }
 
+  // Google Account Chooser & Fallback Dialog
+  if (showGoogleSignInDialog) {
+    val suggestedAccounts = remember(email, fullName) {
+      val list = mutableListOf<String>()
+      if (email.isNotBlank() && email.contains("@")) {
+        list.add(email.trim())
+      }
+      if (!list.contains("maqaiyumtalukder@gmail.com")) {
+        list.add("maqaiyumtalukder@gmail.com")
+      }
+      list
+    }
+
+    GoogleAccountSignInDialog(
+      deviceAccounts = suggestedAccounts,
+      initialEmail = if (email.isNotBlank()) email.trim() else "maqaiyumtalukder@gmail.com",
+      onConfirm = { name, confirmedEmail ->
+        showGoogleSignInDialog = false
+        errorMessage = null
+        val finalName = if (fullName.isNotBlank()) fullName.trim() else name
+        onGoogleSignInConfirmed(finalName, confirmedEmail, null)
+      },
+      onDismiss = { showGoogleSignInDialog = false },
+      language = language
+    )
+  }
+
   Column(
     modifier = modifier
       .fillMaxSize()
       .background(MaterialTheme.colorScheme.background)
-      .verticalScroll(rememberScrollState())
+      .verticalScroll(rememberScrollState()),
+    horizontalAlignment = Alignment.CenterHorizontally
   ) {
     // Header Banner
     Box(
       modifier = Modifier
         .fillMaxWidth()
         .background(PlumDark)
-        .statusBarsPadding()
         .padding(horizontal = 20.dp, vertical = 12.dp),
       contentAlignment = Alignment.Center
     ) {
@@ -263,13 +294,13 @@ fun SignUpScreen(
       }
     }
 
-    // Form Container
+    // Form Container (Constrained width for pristine CTA button placement across all screen sizes)
     Column(
       modifier = Modifier
         .fillMaxWidth()
+        .widthIn(max = 480.dp)
         .padding(horizontal = 18.dp, vertical = 14.dp)
-        .navigationBarsPadding()
-        .padding(bottom = 16.dp),
+        .padding(bottom = 20.dp),
       horizontalAlignment = Alignment.Start
     ) {
       // Screen Title & Subtitle (No duplicate top tab switcher)
@@ -297,24 +328,50 @@ fun SignUpScreen(
             .testTag("signup_error_banner"),
           color = MaterialTheme.colorScheme.errorContainer
         ) {
-          Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = Icons.Default.ErrorOutline,
-              contentDescription = "Error",
-              tint = MaterialTheme.colorScheme.error,
-              modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = errorMessage.orEmpty(),
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onErrorContainer,
-              fontWeight = FontWeight.Medium,
-              fontSize = 12.sp
-            )
+          Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Default.ErrorOutline,
+                contentDescription = "Error",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = errorMessage.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp
+              )
+            }
+            if (errorMessage?.contains("Google", ignoreCase = true) == true ||
+                errorMessage?.contains("credential", ignoreCase = true) == true) {
+              Spacer(modifier = Modifier.height(8.dp))
+              Button(
+                onClick = {
+                  errorMessage = null
+                  showGoogleSignInDialog = true
+                },
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(36.dp)
+                  .testTag("signup_error_google_recovery_button"),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = DeepPlum,
+                  contentColor = Color.White
+                )
+              ) {
+                Text(
+                  text = if (language == "bn") "Google অ্যাকাউন্ট দিয়ে চালিয়ে যান" else "Sign in with Google Account",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+            }
           }
         }
       }

@@ -18,11 +18,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
@@ -35,8 +39,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -50,6 +58,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,11 +86,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.model.CateringPlanEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
@@ -103,8 +114,10 @@ import com.example.ui.theme.TextDark
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.WarningAmber
 import com.example.ui.util.AppStrings
+import com.example.ui.viewmodel.CateringEstimate
 import com.example.ui.viewmodel.EventBudgetSummary
 import com.example.ui.viewmodel.EventGuestSummary
+import kotlin.math.ceil
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -136,12 +149,15 @@ fun EventDetailScreen(
   onAddEventDay: (dayTitle: String, dateFormatted: String, timeFormatted: String, dateTimeMillis: Long, location: String, notes: String) -> Unit = { _, _, _, _, _, _ -> },
   onUpdateEventDay: (EventDayEntity) -> Unit = {},
   onDeleteEventDay: (EventDayEntity) -> Unit = {},
+  cateringPlan: CateringPlanEntity? = null,
+  cateringEstimate: CateringEstimate = CateringEstimate(),
+  onSaveCateringPlan: (perPlateCost: Double, bufferPercent: Int) -> Unit = { _, _ -> },
+  onAddCateringToBudget: (estimatedCost: Double, recommendedPlates: Int, perPlateCost: Double, bufferPercent: Int) -> Unit = { _, _, _, _ -> },
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
   var selectedTabIndex by remember { mutableIntStateOf(0) }
   val tabs = listOf(
-    if (language == "bn") "সময়সূচী" else "Schedule",
     AppStrings.get("checklist", language),
     AppStrings.get("guests", language),
     AppStrings.get("vendors", language),
@@ -149,8 +165,6 @@ fun EventDetailScreen(
   )
 
   var showAddTaskDialog by remember { mutableStateOf(false) }
-  var showAddDayDialog by remember { mutableStateOf(false) }
-  var dayToEdit by remember { mutableStateOf<EventDayEntity?>(null) }
 
   // Days left calculation
   val daysLeft = if (event != null) {
@@ -160,11 +174,20 @@ fun EventDetailScreen(
 
   val coverBg = if (event != null) getCategoryColor(event.category) else Emerald
 
-  Column(
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .background(MaterialTheme.colorScheme.background)
+      .background(MaterialTheme.colorScheme.background),
+    contentAlignment = Alignment.TopCenter
   ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .widthIn(max = 600.dp)
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize()
+      ) {
     // 1. Colored Cover Header (Matches Event Category)
     Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -384,30 +407,24 @@ fun EventDetailScreen(
         .padding(horizontal = 20.dp)
     ) {
       when (selectedTabIndex) {
-        0 -> ScheduleTabContent(
-          event = event,
-          eventDays = eventDays,
-          language = language,
-          onAddFunctionClick = { showAddDayDialog = true },
-          onEditDay = { dayToEdit = it },
-          onDeleteDay = onDeleteEventDay
-        )
-
-        1 -> ChecklistTabContent(
+        0 -> ChecklistTabContent(
           checklist = checklist,
           onToggleItem = onToggleChecklistItem,
           onDeleteItem = onDeleteChecklistItem,
           onAddTaskClick = { showAddTaskDialog = true }
         )
 
-        2 -> GuestsTabContent(
+        1 -> GuestsTabContent(
           eventGuests = eventGuests,
           allContacts = allContacts,
           onUpdateStatus = onUpdateGuestStatus,
-          onAddGuestClick = onNavigateToAddGuests
+          onAddGuestClick = onNavigateToAddGuests,
+          cateringEstimate = cateringEstimate,
+          currencySymbol = currencySymbol,
+          onGoToBudget = { selectedTabIndex = 3 }
         )
 
-        3 -> VendorsTabContent(
+        2 -> VendorsTabContent(
           eventGuests = eventGuests,
           allContacts = allContacts,
           onAddVendorClick = onNavigateToAddGuests,
@@ -418,47 +435,44 @@ fun EventDetailScreen(
           language = language
         )
 
-        4 -> BudgetTabContent(
+        3 -> BudgetTabContent(
           budgetSummary = budgetSummary,
           currencySymbol = currencySymbol,
+          cateringPlan = cateringPlan,
+          cateringEstimate = cateringEstimate,
+          onSaveCateringPlan = onSaveCateringPlan,
+          onAddCateringToBudget = onAddCateringToBudget,
           onOpenFullBudget = onNavigateToBudget
+        )
+      }
+
+      // Contextual Bottom-Right Floating Action Button for active tab
+      val (fabIcon, fabTag, fabAction) = when (selectedTabIndex) {
+        0 -> Triple(Icons.Default.Add, "event_fab_add_task", { showAddTaskDialog = true })
+        1 -> Triple(Icons.Default.PersonAdd, "event_fab_add_guest", onNavigateToAddGuests)
+        2 -> Triple(Icons.Default.Storefront, "event_fab_add_vendor", onNavigateToAddGuests)
+        else -> Triple(Icons.Default.ReceiptLong, "event_fab_full_budget", onNavigateToBudget)
+      }
+
+      FloatingActionButton(
+        onClick = fabAction,
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .padding(bottom = 20.dp, end = 4.dp)
+          .testTag(fabTag),
+        containerColor = AccentGold,
+        contentColor = PlumDark,
+        shape = CircleShape
+      ) {
+        Icon(
+          imageVector = fabIcon,
+          contentDescription = "Primary Action for Tab",
+          modifier = Modifier.size(28.dp)
         )
       }
     }
   }
-
-  // Dialog to Add/Edit Day / Function in Schedule
-  if (showAddDayDialog || dayToEdit != null) {
-    AddEditEventDayDialog(
-      initialDay = dayToEdit,
-      defaultLocation = event?.location ?: "",
-      defaultDate = event?.dateFormatted ?: "",
-      defaultTime = event?.timeFormatted ?: "18:00",
-      language = language,
-      onDismiss = {
-        showAddDayDialog = false
-        dayToEdit = null
-      },
-      onSave = { title, date, time, location, description, dateTimeMillis ->
-        val currentEdit = dayToEdit
-        if (currentEdit != null) {
-          onUpdateEventDay(
-            currentEdit.copy(
-              dayTitle = title,
-              dateFormatted = date,
-              timeFormatted = time,
-              location = location,
-              notes = description,
-              dateTimeMillis = dateTimeMillis
-            )
-          )
-        } else {
-          onAddEventDay(title, date, time, dateTimeMillis, location, description)
-        }
-        showAddDayDialog = false
-        dayToEdit = null
-      }
-    )
+    }
   }
 
   // Dialog to Add Task to Checklist
@@ -640,7 +654,10 @@ fun GuestsTabContent(
   eventGuests: List<EventContactCrossRef>,
   allContacts: List<ContactEntity>,
   onUpdateStatus: (contactId: Long, newStatus: String) -> Unit,
-  onAddGuestClick: () -> Unit
+  onAddGuestClick: () -> Unit,
+  cateringEstimate: CateringEstimate = CateringEstimate(),
+  currencySymbol: String = "৳",
+  onGoToBudget: () -> Unit = {}
 ) {
   val contactMap = remember(allContacts) { allContacts.associateBy { it.id } }
 
@@ -671,6 +688,54 @@ fun GuestsTabContent(
         Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.width(4.dp))
         Text("Add Guests", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+      }
+    }
+
+    // Catering connection banner
+    Surface(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(bottom = 12.dp)
+        .clickable { onGoToBudget() },
+      color = DeepPlum.copy(alpha = 0.05f),
+      shape = RoundedCornerShape(12.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Default.Restaurant,
+            contentDescription = "Catering",
+            tint = Emerald,
+            modifier = Modifier.size(16.dp)
+          )
+          Text(
+            text = if (cateringEstimate.perPlateCost > 0.0) {
+              "Catering: ${cateringEstimate.recommendedPlates} plates (${cateringEstimate.confirmedGuestCount} confirmed + buffer)"
+            } else {
+              "Catering: ${cateringEstimate.confirmedGuestCount} confirmed guests → Auto-calculate plates"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = DeepPlum
+          )
+        }
+        Text(
+          text = "Budget Tab →",
+          style = MaterialTheme.typography.labelSmall,
+          fontWeight = FontWeight.Bold,
+          color = AccentGold,
+          fontSize = 11.sp
+        )
       }
     }
 
@@ -1311,12 +1376,17 @@ fun VendorsTabContent(
 fun BudgetTabContent(
   budgetSummary: EventBudgetSummary,
   currencySymbol: String,
+  cateringPlan: CateringPlanEntity?,
+  cateringEstimate: CateringEstimate,
+  onSaveCateringPlan: (perPlateCost: Double, bufferPercent: Int) -> Unit,
+  onAddCateringToBudget: (estimatedCost: Double, recommendedPlates: Int, perPlateCost: Double, bufferPercent: Int) -> Unit,
   onOpenFullBudget: () -> Unit
 ) {
   Column(
     modifier = Modifier
       .fillMaxSize()
-      .padding(top = 16.dp),
+      .verticalScroll(rememberScrollState())
+      .padding(top = 16.dp, bottom = 32.dp),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
     Surface(
@@ -1385,6 +1455,16 @@ fun BudgetTabContent(
       }
     }
 
+    // Catering Estimate Card (Guest Headcount -> Catering Quantity Auto-calculation)
+    CateringEstimateCard(
+      cateringPlan = cateringPlan,
+      cateringEstimate = cateringEstimate,
+      currencySymbol = currencySymbol,
+      onSaveCateringPlan = onSaveCateringPlan,
+      onAddCateringToBudget = onAddCateringToBudget,
+      modifier = Modifier.testTag("catering_estimate_card")
+    )
+
     // Full budget button
     Button(
       onClick = onOpenFullBudget,
@@ -1404,631 +1484,375 @@ fun BudgetTabContent(
 }
 
 @Composable
-fun ScheduleTabContent(
-  event: EventEntity?,
-  eventDays: List<EventDayEntity>,
-  language: String,
-  onAddFunctionClick: () -> Unit,
-  onEditDay: (EventDayEntity) -> Unit,
-  onDeleteDay: (EventDayEntity) -> Unit,
+fun CateringEstimateCard(
+  cateringPlan: CateringPlanEntity?,
+  cateringEstimate: CateringEstimate,
+  currencySymbol: String,
+  onSaveCateringPlan: (perPlateCost: Double, bufferPercent: Int) -> Unit,
+  onAddCateringToBudget: (estimatedCost: Double, recommendedPlates: Int, perPlateCost: Double, bufferPercent: Int) -> Unit,
   modifier: Modifier = Modifier
 ) {
-  val sortedDays = remember(eventDays) {
-    eventDays.sortedBy { it.dateTimeMillis }
+  var perPlateInput by remember(cateringPlan?.perPlateCost) {
+    mutableStateOf(
+      if (cateringPlan != null && cateringPlan.perPlateCost > 0.0) {
+        if (cateringPlan.perPlateCost % 1.0 == 0.0) {
+          cateringPlan.perPlateCost.toInt().toString()
+        } else {
+          cateringPlan.perPlateCost.toString()
+        }
+      } else ""
+    )
   }
 
-  LazyColumn(
-    modifier = modifier.fillMaxSize(),
-    verticalArrangement = Arrangement.spacedBy(16.dp),
-    contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 16.dp, bottom = 80.dp)
+  var bufferInput by remember(cateringPlan?.bufferPercent) {
+    mutableStateOf((cateringPlan?.bufferPercent ?: 10).toString())
+  }
+
+  var justAddedToBudget by remember { mutableStateOf(false) }
+
+  val confirmedCount = cateringEstimate.confirmedGuestCount
+  val perPlateCost = perPlateInput.toDoubleOrNull() ?: 0.0
+  val bufferPercent = bufferInput.toIntOrNull()?.coerceIn(0, 100) ?: 10
+
+  val bufferPlates = if (confirmedCount > 0) {
+    ceil(confirmedCount * bufferPercent / 100.0).toInt()
+  } else 0
+  val recommendedPlates = confirmedCount + bufferPlates
+  val estimatedCost = recommendedPlates * perPlateCost
+
+  Surface(
+    modifier = modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(18.dp))
+      .border(1.dp, BorderSubtle, RoundedCornerShape(18.dp)),
+    color = MaterialTheme.colorScheme.surface,
+    tonalElevation = 1.dp
   ) {
-    // Header with action
-    item {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(18.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+      // Header
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
-          Text(
-            text = if (language == "bn") "সময়সূচী ও অনুষ্ঠানসমূহ" else "Event Functions & Schedule",
-            style = MaterialTheme.typography.titleMedium,
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-          )
-          Text(
-            text = if (sortedDays.isNotEmpty()) {
-              if (language == "bn") "${sortedDays.size}টি অনুষ্ঠান নির্ধারিত" else "${sortedDays.size} function${if (sortedDays.size > 1) "s" else ""} scheduled"
-            } else {
-              if (language == "bn") "১টি মূল অনুষ্ঠান (একক দিন)" else "1 main function (Single-day default)"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
-          )
-        }
-
-        Button(
-          onClick = onAddFunctionClick,
-          shape = RoundedCornerShape(10.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
-          modifier = Modifier.testTag("add_event_function_button")
-        ) {
-          Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-          Spacer(modifier = Modifier.width(4.dp))
-          Text(
-            text = if (language == "bn") "অনুষ্ঠান যোগ" else "Add Function",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-          )
-        }
-      }
-    }
-
-    // Backward compatibility: If no EventDayEntity rows exist yet, show the event's top-level date/time/location
-    if (sortedDays.isEmpty()) {
-      item {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp)),
-          color = MaterialTheme.colorScheme.surface,
-          tonalElevation = 2.dp
-        ) {
-          Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                Surface(
-                  shape = CircleShape,
-                  color = DeepPlum.copy(alpha = 0.12f),
-                  modifier = Modifier.size(36.dp)
-                ) {
-                  Box(contentAlignment = Alignment.Center) {
-                    Text(
-                      text = "1",
-                      color = DeepPlum,
-                      fontWeight = FontWeight.Bold,
-                      fontSize = 14.sp
-                    )
-                  }
-                }
-
-                Column {
-                  Text(
-                    text = event?.title ?: "Main Event",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                  )
-                  Text(
-                    text = if (language == "bn") "মূল অনুষ্ঠান (ডিফল্ট)" else "Main Function (Default)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AccentGold,
-                    fontWeight = FontWeight.SemiBold
-                  )
-                }
-              }
-
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = SuccessGreen.copy(alpha = 0.15f)
-              ) {
-                Text(
-                  text = if (language == "bn") "সক্রিয়" else "Active",
-                  color = SuccessGreen,
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold,
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                )
-              }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Date & Time
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Default.CalendarToday,
-                contentDescription = null,
-                tint = DeepPlum,
-                modifier = Modifier.size(16.dp)
-              )
-              Text(
-                text = "${event?.dateFormatted ?: ""} • ${event?.timeFormatted ?: ""}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-              )
-            }
-
-            if (!event?.location.isNullOrBlank()) {
-              Spacer(modifier = Modifier.height(8.dp))
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.Default.LocationOn,
-                  contentDescription = null,
-                  tint = TextMuted,
-                  modifier = Modifier.size(16.dp)
-                )
-                Text(
-                  text = event.location,
-                  style = MaterialTheme.typography.bodyMedium,
-                  color = TextMuted
-                )
-              }
-            }
-
-            if (!event?.description.isNullOrBlank()) {
-              Spacer(modifier = Modifier.height(10.dp))
-              Text(
-                text = event.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextDark
-              )
-            }
-          }
-        }
-      }
-
-      // Explanatory Banner for Multi-day features
-      item {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, AccentGold.copy(alpha = 0.4f), RoundedCornerShape(14.dp)),
-          color = AccentGold.copy(alpha = 0.08f)
-        ) {
-          Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-          ) {
-            Text(
-              text = if (language == "bn") "বহুদিনের অনুষ্ঠান পরিকল্পনা?" else "Planning a Multi-Day Event?",
-              style = MaterialTheme.typography.titleSmall,
-              fontWeight = FontWeight.Bold,
-              color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-              text = if (language == "bn")
-                "গায়ে হলুদ, মেহেদী নাইট, সঙ্গীত, বিয়ে এবং ওয়ালিমা/রিসেপশনের মতো প্রতিটি দিনের জন্য আলাদা সময়সূচী ও ভেন্যু যোগ করুন।"
-              else
-                "Add distinct days and functions for Haldi/Mehendi, Sangeet, Wedding Ceremony, and Walima/Reception with custom dates, timings, and venues.",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            TextButton(
-              onClick = onAddFunctionClick,
-              modifier = Modifier.align(Alignment.End)
-            ) {
-              Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = DeepPlum, modifier = Modifier.size(16.dp))
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = if (language == "bn") "+ প্রথম ফাংশন যোগ করুন" else "+ Add First Function",
-                color = DeepPlum,
-                fontWeight = FontWeight.Bold
-              )
-            }
-          }
-        }
-      }
-    } else {
-      // Show the list of functions in chronological/order sequence
-      items(sortedDays, key = { it.id }) { day ->
-        val index = sortedDays.indexOf(day) + 1
-        ScheduleTimelineItemCard(
-          dayNumber = index,
-          day = day,
-          language = language,
-          onEdit = { onEditDay(day) },
-          onDelete = { onDeleteDay(day) }
-        )
-      }
-    }
-  }
-}
-
-@Composable
-fun ScheduleTimelineItemCard(
-  dayNumber: Int,
-  day: EventDayEntity,
-  language: String,
-  onEdit: () -> Unit,
-  onDelete: () -> Unit,
-  modifier: Modifier = Modifier
-) {
-  var showDeleteConfirm by remember { mutableStateOf(false) }
-
-  Surface(
-    modifier = modifier
-      .fillMaxWidth()
-      .clip(RoundedCornerShape(16.dp))
-      .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp)),
-    color = MaterialTheme.colorScheme.surface,
-    tonalElevation = 2.dp
-  ) {
-    Column(modifier = Modifier.padding(16.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top
-      ) {
         Row(
-          modifier = Modifier.weight(1f),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          Surface(
-            shape = CircleShape,
-            color = DeepPlum.copy(alpha = 0.12f),
-            modifier = Modifier.size(38.dp)
+          Box(
+            modifier = Modifier
+              .size(36.dp)
+              .clip(CircleShape)
+              .background(DeepPlum.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
           ) {
-            Box(contentAlignment = Alignment.Center) {
-              Text(
-                text = "$dayNumber",
-                color = DeepPlum,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-              )
-            }
+            Icon(
+              imageVector = Icons.Default.Restaurant,
+              contentDescription = "Catering",
+              tint = DeepPlum,
+              modifier = Modifier.size(20.dp)
+            )
           }
 
           Column {
             Text(
-              text = day.dayTitle,
+              text = "Catering Quantity & Cost",
               style = MaterialTheme.typography.titleMedium,
               fontWeight = FontWeight.Bold,
               color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-              text = if (language == "bn") "দিন $dayNumber" else "Day $dayNumber",
+              text = "Guest Headcount → Plate Calculator",
               style = MaterialTheme.typography.labelSmall,
-              color = AccentGold,
-              fontWeight = FontWeight.SemiBold
+              color = TextMuted
             )
           }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          IconButton(
-            onClick = onEdit,
-            modifier = Modifier.size(32.dp)
+        Surface(
+          color = Emerald.copy(alpha = 0.12f),
+          shape = RoundedCornerShape(8.dp)
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
           ) {
             Icon(
-              imageVector = Icons.Default.Edit,
-              contentDescription = "Edit Function",
+              imageVector = Icons.Default.CheckCircle,
+              contentDescription = null,
+              tint = Emerald,
+              modifier = Modifier.size(12.dp)
+            )
+            Text(
+              text = "RSVP Sync",
+              style = MaterialTheme.typography.labelSmall,
+              fontWeight = FontWeight.Bold,
+              color = Emerald
+            )
+          }
+        }
+      }
+
+      // Confirmed Headcount Display
+      Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = DeepPlum.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(12.dp)
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Default.People,
+              contentDescription = null,
               tint = DeepPlum,
               modifier = Modifier.size(18.dp)
             )
+            Column {
+              Text(
+                text = "Confirmed Guest Headcount",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+              )
+              Text(
+                text = "$confirmedCount ${if (confirmedCount == 1) "Guest" else "Guests"}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = DeepPlum
+              )
+            }
           }
-          IconButton(
-            onClick = { showDeleteConfirm = true },
-            modifier = Modifier.size(32.dp)
+
+          Text(
+            text = if (confirmedCount == 0) "No confirmed RSVPs yet" else "Live from Guests tab",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (confirmedCount == 0) AccentGold else TextMuted,
+            fontSize = 11.sp
+          )
+        }
+      }
+
+      // Input controls: Cost / plate and Buffer %
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+      ) {
+        OutlinedTextField(
+          value = perPlateInput,
+          onValueChange = { newValue ->
+            if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
+              perPlateInput = newValue
+              val cost = newValue.toDoubleOrNull() ?: 0.0
+              val buffer = bufferInput.toIntOrNull()?.coerceIn(0, 100) ?: 10
+              onSaveCateringPlan(cost, buffer)
+              justAddedToBudget = false
+            }
+          },
+          label = { Text("Cost / plate") },
+          placeholder = { Text("0") },
+          prefix = {
+            Text(
+              text = currencySymbol,
+              fontWeight = FontWeight.Bold,
+              color = DeepPlum
+            )
+          },
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+          singleLine = true,
+          modifier = Modifier
+            .weight(1.2f)
+            .testTag("catering_cost_per_plate_input"),
+          shape = RoundedCornerShape(12.dp)
+        )
+
+        OutlinedTextField(
+          value = bufferInput,
+          onValueChange = { newValue ->
+            if (newValue.isEmpty() || (newValue.matches(Regex("^\\d+$")) && newValue.length <= 3)) {
+              bufferInput = newValue
+              val cost = perPlateInput.toDoubleOrNull() ?: 0.0
+              val buffer = newValue.toIntOrNull()?.coerceIn(0, 100) ?: 10
+              onSaveCateringPlan(cost, buffer)
+              justAddedToBudget = false
+            }
+          },
+          label = { Text("Buffer %") },
+          placeholder = { Text("10") },
+          suffix = {
+            Text(
+              text = "%",
+              fontWeight = FontWeight.Bold,
+              color = DeepPlum
+            )
+          },
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+          singleLine = true,
+          modifier = Modifier
+            .weight(0.9f)
+            .testTag("catering_buffer_percent_input"),
+          shape = RoundedCornerShape(12.dp)
+        )
+      }
+
+      Text(
+        text = "Buffer provides safety margin for uninvited plus-ones or late arrivals (default 10%).",
+        style = MaterialTheme.typography.labelSmall,
+        color = TextMuted,
+        fontSize = 11.sp
+      )
+
+      // Result Section
+      if (perPlateCost <= 0.0) {
+        Surface(
+          modifier = Modifier.fillMaxWidth(),
+          color = AccentGoldLight.copy(alpha = 0.4f),
+          shape = RoundedCornerShape(12.dp),
+          border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold.copy(alpha = 0.5f))
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
           ) {
             Icon(
-              imageVector = Icons.Default.Delete,
-              contentDescription = "Delete Function",
-              tint = DangerRed,
-              modifier = Modifier.size(18.dp)
+              imageVector = Icons.Default.Info,
+              contentDescription = null,
+              tint = AccentGold,
+              modifier = Modifier.size(20.dp)
+            )
+            Text(
+              text = "Enter a cost per plate above to calculate the recommended food order and budget.",
+              style = MaterialTheme.typography.bodySmall,
+              color = TextDark,
+              fontWeight = FontWeight.Medium
             )
           }
         }
-      }
-
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Date & Time
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        Icon(
-          imageVector = Icons.Default.CalendarToday,
-          contentDescription = null,
-          tint = DeepPlum,
-          modifier = Modifier.size(15.dp)
-        )
-        Text(
-          text = if (day.timeFormatted.isNotBlank()) "${day.dateFormatted} • ${day.timeFormatted}" else day.dateFormatted,
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.Medium,
-          color = MaterialTheme.colorScheme.onSurface
-        )
-      }
-
-      // Location
-      if (day.location.isNotBlank()) {
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Default.LocationOn,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(15.dp)
-          )
-          Text(
-            text = day.location,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextMuted
-          )
-        }
-      }
-
-      // Description / Note
-      if (day.notes.isNotBlank()) {
-        Spacer(modifier = Modifier.height(8.dp))
+      } else {
         Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-          modifier = Modifier.fillMaxWidth()
+          modifier = Modifier.fillMaxWidth(),
+          color = DeepPlum.copy(alpha = 0.04f),
+          shape = RoundedCornerShape(14.dp),
+          border = androidx.compose.foundation.BorderStroke(1.dp, DeepPlum.copy(alpha = 0.15f))
         ) {
-          Text(
-            text = day.notes,
-            style = MaterialTheme.typography.bodySmall,
-            color = TextDark,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-          )
-        }
-      }
-    }
-  }
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "RECOMMENDED ORDER",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = "$recommendedPlates Plates",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = DeepPlum
+              )
+              Text(
+                text = if (bufferPlates > 0) {
+                  "$confirmedCount confirmed + $bufferPlates extra (${bufferPercent}%)"
+                } else {
+                  "$confirmedCount confirmed"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                fontSize = 11.sp
+              )
+            }
 
-  if (showDeleteConfirm) {
-    AlertDialog(
-      onDismissRequest = { showDeleteConfirm = false },
-      title = {
-        Text(
-          text = if (language == "bn") "অনুষ্ঠান মুছে ফেলবেন?" else "Delete Function?",
-          fontWeight = FontWeight.Bold
-        )
-      },
-      text = {
-        Text(
-          text = if (language == "bn")
-            "আপনি কি নিশ্চিত যে '${day.dayTitle}' অনুষ্ঠানটি মুছে ফেলতে চান?"
-          else
-            "Are you sure you want to remove '${day.dayTitle}' from the schedule?"
-        )
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            onDelete()
-            showDeleteConfirm = false
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
-        ) {
-          Text(if (language == "bn") "মুছুন" else "Delete")
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showDeleteConfirm = false }) {
-          Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
-        }
-      }
-    )
-  }
-}
+            Box(
+              modifier = Modifier
+                .height(40.dp)
+                .width(1.dp)
+                .background(BorderSubtle)
+            )
 
-@Composable
-fun AddEditEventDayDialog(
-  initialDay: EventDayEntity?,
-  defaultLocation: String,
-  defaultDate: String,
-  defaultTime: String,
-  language: String,
-  onDismiss: () -> Unit,
-  onSave: (title: String, date: String, time: String, location: String, description: String, dateTimeMillis: Long) -> Unit
-) {
-  val context = LocalContext.current
-  val isEditing = initialDay != null
-
-  var title by remember { mutableStateOf(initialDay?.dayTitle ?: "") }
-  var dateFormatted by remember { mutableStateOf(initialDay?.dateFormatted ?: if (defaultDate.isNotBlank()) defaultDate else "Oct 24, 2026") }
-  var timeFormatted by remember { mutableStateOf(initialDay?.timeFormatted ?: if (defaultTime.isNotBlank()) defaultTime else "19:00") }
-  var location by remember { mutableStateOf(initialDay?.location ?: defaultLocation) }
-  var description by remember { mutableStateOf(initialDay?.notes ?: "") }
-  var dateTimeMillis by remember { mutableStateOf(initialDay?.dateTimeMillis ?: System.currentTimeMillis()) }
-
-  val calendar = remember {
-    Calendar.getInstance().apply {
-      if (initialDay?.dateTimeMillis != null && initialDay.dateTimeMillis > 0) {
-        timeInMillis = initialDay.dateTimeMillis
-      }
-    }
-  }
-
-  val datePicker = remember {
-    DatePickerDialog(
-      context,
-      { _, year, month, dayOfMonth ->
-        calendar.set(Calendar.YEAR, year)
-        calendar.set(Calendar.MONTH, month)
-        calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-        val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-        dateFormatted = sdf.format(calendar.time)
-        dateTimeMillis = calendar.timeInMillis
-      },
-      calendar.get(Calendar.YEAR),
-      calendar.get(Calendar.MONTH),
-      calendar.get(Calendar.DAY_OF_MONTH)
-    )
-  }
-
-  val timePicker = remember {
-    TimePickerDialog(
-      context,
-      { _, hourOfDay, minute ->
-        calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-        calendar.set(Calendar.MINUTE, minute)
-        val amPm = if (hourOfDay >= 12) "PM" else "AM"
-        val hour12 = if (hourOfDay % 12 == 0) 12 else hourOfDay % 12
-        timeFormatted = String.format(Locale.getDefault(), "%02d:%02d %s", hour12, minute, amPm)
-        dateTimeMillis = calendar.timeInMillis
-      },
-      calendar.get(Calendar.HOUR_OF_DAY),
-      calendar.get(Calendar.MINUTE),
-      false
-    )
-  }
-
-  val suggestedTitles = listOf("Gaye Holud", "Mehendi Night", "Sangeet", "Wedding Ceremony", "Walima / Reception", "Post-Wedding Brunch")
-
-  AlertDialog(
-    onDismissRequest = onDismiss,
-    title = {
-      Text(
-        text = if (isEditing) {
-          if (language == "bn") "অনুষ্ঠান সম্পাদনা" else "Edit Function"
-        } else {
-          if (language == "bn") "নতুন দিন/অনুষ্ঠান যোগ করুন" else "Add Day / Function"
-        },
-        style = MaterialTheme.typography.titleLarge,
-        fontFamily = FontFamily.Serif
-      )
-    },
-    text = {
-      Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-      ) {
-        // Suggested function tags
-        Text(
-          text = if (language == "bn") "জনপ্রিয় অনুষ্ঠান নির্বাচন করুন:" else "Quick Suggestions:",
-          style = MaterialTheme.typography.labelSmall,
-          color = TextMuted
-        )
-        LazyRow(
-          horizontalArrangement = Arrangement.spacedBy(6.dp),
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          items(suggestedTitles) { chip ->
-            Surface(
-              shape = RoundedCornerShape(16.dp),
-              color = if (title == chip) DeepPlum.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-              border = if (title == chip) androidx.compose.foundation.BorderStroke(1.dp, DeepPlum) else null,
-              modifier = Modifier.clickable { title = chip }
+            Column(
+              modifier = Modifier
+                .weight(1.1f)
+                .padding(start = 12.dp),
+              horizontalAlignment = Alignment.End
             ) {
               Text(
-                text = chip,
+                text = "ESTIMATED TOTAL",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (title == chip) DeepPlum else TextDark,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                color = TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = formatCurrency(estimatedCost, currencySymbol),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Emerald
+              )
+              Text(
+                text = "$recommendedPlates × ${formatCurrency(perPlateCost, currencySymbol)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                fontSize = 11.sp
               )
             }
           }
         }
 
-        OutlinedTextField(
-          value = title,
-          onValueChange = { title = it },
-          label = { Text(if (language == "bn") "অনুষ্ঠানের নাম" else "Function / Day Title") },
-          placeholder = { Text("e.g. Gaye Holud / Sangeet") },
-          singleLine = true,
+        Button(
+          onClick = {
+            onAddCateringToBudget(estimatedCost, recommendedPlates, perPlateCost, bufferPercent)
+            justAddedToBudget = true
+          },
           modifier = Modifier
             .fillMaxWidth()
-            .testTag("function_title_input")
-        )
-
-        // Date and Time Pickers
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .height(48.dp)
+            .testTag("catering_add_to_budget_button"),
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = if (justAddedToBudget) SuccessGreen else Emerald,
+            contentColor = Color.White
+          )
         ) {
-          OutlinedTextField(
-            value = dateFormatted,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(if (language == "bn") "তারিখ" else "Date") },
-            trailingIcon = {
-              IconButton(onClick = { datePicker.show() }) {
-                Icon(Icons.Default.CalendarToday, contentDescription = "Pick Date", tint = DeepPlum)
-              }
-            },
-            modifier = Modifier
-              .weight(1f)
-              .clickable { datePicker.show() }
-          )
-
-          OutlinedTextField(
-            value = timeFormatted,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(if (language == "bn") "সময়" else "Time") },
-            trailingIcon = {
-              IconButton(onClick = { timePicker.show() }) {
-                Icon(Icons.Default.AccessTime, contentDescription = "Pick Time", tint = DeepPlum)
-              }
-            },
-            modifier = Modifier
-              .weight(1f)
-              .clickable { timePicker.show() }
-          )
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Icon(
+              imageVector = if (justAddedToBudget) Icons.Default.Check else Icons.Default.ReceiptLong,
+              contentDescription = null,
+              modifier = Modifier.size(18.dp)
+            )
+            Text(
+              text = if (justAddedToBudget) "Updated in Budget Line Items ✓" else "Add Catering to Budget",
+              fontWeight = FontWeight.Bold
+            )
+          }
         }
-
-        OutlinedTextField(
-          value = location,
-          onValueChange = { location = it },
-          label = { Text(if (language == "bn") "ভেন্যু বা স্থান" else "Venue / Location") },
-          placeholder = { Text("e.g. Community Center or Hotel") },
-          leadingIcon = {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = TextMuted)
-          },
-          singleLine = true,
-          modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-          value = description,
-          onValueChange = { description = it },
-          label = { Text(if (language == "bn") "বিবরণ বা নোট" else "Notes / Dress Code / Description") },
-          placeholder = { Text("e.g. Traditional Yellow dress, starts with snacks") },
-          maxLines = 3,
-          modifier = Modifier.fillMaxWidth()
-        )
-      }
-    },
-    confirmButton = {
-      Button(
-        onClick = {
-          if (title.isNotBlank()) {
-            onSave(title.trim(), dateFormatted, timeFormatted, location.trim(), description.trim(), dateTimeMillis)
-          }
-        },
-        colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
-        enabled = title.isNotBlank(),
-        modifier = Modifier.testTag("save_event_function_button")
-      ) {
-        Text(
-          if (isEditing) {
-            if (language == "bn") "আপডেট করুন" else "Save Changes"
-          } else {
-            if (language == "bn") "যোগ করুন" else "Add Function"
-          }
-        )
-      }
-    },
-    dismissButton = {
-      TextButton(onClick = onDismiss) {
-        Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
       }
     }
-  )
+  }
 }

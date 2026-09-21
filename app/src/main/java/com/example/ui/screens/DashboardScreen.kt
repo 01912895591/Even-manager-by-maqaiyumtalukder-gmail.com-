@@ -161,15 +161,19 @@ fun DashboardScreen(
     Box(
       modifier = Modifier
         .fillMaxSize()
-        .background(MaterialTheme.colorScheme.background)
+        .background(MaterialTheme.colorScheme.background),
+      contentAlignment = Alignment.TopCenter
     ) {
-      LazyColumn(
+      Box(
         modifier = Modifier
           .fillMaxSize()
           .widthIn(max = contentMaxWidth)
-          .align(Alignment.TopCenter)
-          .testTag("dashboard_screen")
       ) {
+        LazyColumn(
+          modifier = Modifier
+            .fillMaxSize()
+            .testTag("dashboard_screen")
+        ) {
         // 1. Dark Plum Hero Header
         item {
           Box(
@@ -1165,6 +1169,7 @@ fun DashboardScreen(
         )
       }
     }
+  }
 
     // Confirmation Dialog before deleting an event
     if (eventToDelete != null) {

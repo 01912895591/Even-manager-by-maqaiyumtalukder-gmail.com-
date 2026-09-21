@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.dao.AppSettingsDao
+import com.example.data.dao.CateringPlanDao
 import com.example.data.dao.ChecklistDao
 import com.example.data.dao.ContactDao
 import com.example.data.dao.EventContactDao
@@ -14,6 +15,7 @@ import com.example.data.dao.EventDayDao
 import com.example.data.dao.ExpenseDao
 import com.example.data.dao.UserDao
 import com.example.data.model.AppSettingsEntity
+import com.example.data.model.CateringPlanEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
@@ -35,9 +37,10 @@ import kotlinx.coroutines.launch
     ExpenseEntity::class,
     ContactEntity::class,
     EventContactCrossRef::class,
-    AppSettingsEntity::class
+    AppSettingsEntity::class,
+    CateringPlanEntity::class
   ],
-  version = 9,
+  version = 10,
   exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -49,6 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
   abstract fun contactDao(): ContactDao
   abstract fun eventContactDao(): EventContactDao
   abstract fun appSettingsDao(): AppSettingsDao
+  abstract fun cateringPlanDao(): CateringPlanDao
 
   companion object {
     @Volatile

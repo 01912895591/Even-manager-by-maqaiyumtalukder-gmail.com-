@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -90,12 +91,20 @@ fun EventsListScreen(
     }
   }
 
-  Box(modifier = modifier.fillMaxSize()) {
-    Column(
+  Box(
+    modifier = modifier.fillMaxSize(),
+    contentAlignment = Alignment.TopCenter
+  ) {
+    Box(
       modifier = Modifier
         .fillMaxSize()
-        .background(MaterialTheme.colorScheme.background)
+        .widthIn(max = 600.dp)
     ) {
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .background(MaterialTheme.colorScheme.background)
+      ) {
       // Top Bar: "Your Events"
       Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -235,19 +244,21 @@ fun EventsListScreen(
       }
     }
 
-    // Floating Button
-    FloatingActionButton(
-      onClick = onNewEventClick,
-      modifier = Modifier
-        .align(Alignment.BottomEnd)
-        .padding(end = 24.dp, bottom = 24.dp)
-        .testTag("events_fab_new"),
-      containerColor = AccentGold,
-      contentColor = PlumDark,
-      shape = CircleShape
-    ) {
-      Icon(Icons.Default.Add, contentDescription = "Add Event", modifier = Modifier.size(28.dp))
+      // Floating Button
+      FloatingActionButton(
+        onClick = onNewEventClick,
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .padding(end = 20.dp, bottom = 20.dp)
+          .testTag("events_fab_new"),
+        containerColor = AccentGold,
+        contentColor = PlumDark,
+        shape = CircleShape
+      ) {
+        Icon(Icons.Default.Add, contentDescription = "Add Event", modifier = Modifier.size(28.dp))
+      }
     }
+  }
 
     // Confirmation Dialog before deleting an event
     if (eventToDelete != null) {
@@ -328,4 +339,3 @@ fun EventsListScreen(
       )
     }
   }
-}

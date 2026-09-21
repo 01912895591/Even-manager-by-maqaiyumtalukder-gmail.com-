@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -47,6 +48,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -169,11 +171,20 @@ fun ContactsScreen(
     allEventContacts.groupBy { it.contactId }.mapValues { it.value.size }
   }
 
-  Column(
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .background(MaterialTheme.colorScheme.background)
+      .background(MaterialTheme.colorScheme.background),
+    contentAlignment = Alignment.TopCenter
   ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .widthIn(max = 600.dp)
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize()
+      ) {
     // 1. Top Section (Title + Add Button + Import Button + Search + Filters)
     Surface(
       modifier = Modifier.fillMaxWidth(),
@@ -509,7 +520,27 @@ fun ContactsScreen(
       }
 
       item {
-        Spacer(modifier = Modifier.height(80.dp))
+        Spacer(modifier = Modifier.height(96.dp))
+      }
+    }
+  }
+
+      // Add Contact Floating Action Button
+      FloatingActionButton(
+        onClick = { showAddDialog = true },
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .padding(end = 20.dp, bottom = 20.dp)
+          .testTag("contacts_fab_add"),
+        containerColor = AccentGold,
+        contentColor = PlumDark,
+        shape = CircleShape
+      ) {
+        Icon(
+          imageVector = Icons.Default.PersonAdd,
+          contentDescription = "Add Contact",
+          modifier = Modifier.size(28.dp)
+        )
       }
     }
   }

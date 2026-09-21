@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.model.AppSettingsEntity
+import com.example.data.model.CateringPlanEntity
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -65,6 +67,14 @@ data class EventGuestSummary(
   val called: Int,
   val notCalled: Int,
   val declined: Int
+)
+
+data class CateringEstimate(
+  val confirmedGuestCount: Int = 0,
+  val recommendedPlates: Int = 0,
+  val estimatedCost: Double = 0.0,
+  val perPlateCost: Double = 0.0,
+  val bufferPercent: Int = 10
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -230,6 +240,39 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
       SharingStarted.WhileSubscribed(5000),
       EventGuestSummary(0, 0, 0, 0, 0)
     )
+
+  // Catering Plan & Estimation for selected event
+  val selectedCateringPlan: StateFlow<CateringPlanEntity?> = _selectedEventId
+    .flatMapLatest { id ->
+      if (id != null) repository.getCateringPlan(id) else flowOf(null)
+    }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+  val cateringEstimate: StateFlow<CateringEstimate> = combine(
+    selectedEventGuests,
+    selectedCateringPlan
+  ) { guests, plan ->
+    val confirmedCount = guests.count { it.status.equals("Confirmed", ignoreCase = true) }
+    val perPlate = plan?.perPlateCost ?: 0.0
+    val buffer = plan?.bufferPercent ?: 10
+    val bufferPlates = if (confirmedCount > 0) {
+      ceil(confirmedCount * buffer / 100.0).toInt()
+    } else 0
+    val recommended = confirmedCount + bufferPlates
+    val cost = recommended * perPlate
+
+    CateringEstimate(
+      confirmedGuestCount = confirmedCount,
+      recommendedPlates = recommended,
+      estimatedCost = cost,
+      perPlateCost = perPlate,
+      bufferPercent = buffer
+    )
+  }.stateIn(
+    viewModelScope,
+    SharingStarted.WhileSubscribed(5000),
+    CateringEstimate()
+  )
 
   // Contacts Filtering & Search
   private val _contactSearchQuery = MutableStateFlow("")
@@ -488,6 +531,70 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
   fun deleteExpense(expense: ExpenseEntity) {
     viewModelScope.launch {
       repository.deleteExpense(expense)
+    }
+  }
+
+  // Catering Actions
+  fun saveCateringPlanForSelectedEvent(
+    perPlateCost: Double,
+    bufferPercent: Int = 10,
+    notes: String = ""
+  ) {
+    val eventId = _selectedEventId.value ?: return
+    viewModelScope.launch {
+      repository.saveCateringPlan(
+        CateringPlanEntity(
+          eventId = eventId,
+          perPlateCost = perPlateCost,
+          bufferPercent = bufferPercent,
+          notes = notes
+        )
+      )
+    }
+  }
+
+  fun addOrUpdateCateringExpense(
+    eventId: Long,
+    estimatedCost: Double,
+    recommendedPlates: Int,
+    perPlateCost: Double,
+    bufferPercent: Int,
+    onSuccess: () -> Unit = {}
+  ) {
+    val targetEventId = if (eventId > 0) eventId else (_selectedEventId.value ?: return)
+    viewModelScope.launch {
+      val currentExpenses = repository.getExpensesForEvent(targetEventId).firstOrNull() ?: emptyList()
+      val existingCatering = currentExpenses.find { it.category.equals("Catering", ignoreCase = true) }
+      val noteText = "$recommendedPlates plates @ $perPlateCost/plate ($bufferPercent% buffer)"
+      if (existingCatering != null) {
+        val newDue = if (existingCatering.paymentStatus.equals("Paid", ignoreCase = true)) {
+          0.0
+        } else {
+          (estimatedCost - existingCatering.advancePaid).coerceAtLeast(0.0)
+        }
+        repository.updateExpense(
+          existingCatering.copy(
+            amount = estimatedCost,
+            dueAmount = newDue,
+            note = if (existingCatering.note.isBlank() || existingCatering.note.contains("plates @")) noteText else existingCatering.note
+          )
+        )
+      } else {
+        repository.insertExpense(
+          ExpenseEntity(
+            eventId = targetEventId,
+            name = "Catering ($recommendedPlates plates)",
+            category = "Catering",
+            amount = estimatedCost,
+            paymentStatus = "Due",
+            dueAmount = estimatedCost,
+            advancePaid = 0.0,
+            note = noteText,
+            date = "Auto-calculated"
+          )
+        )
+      }
+      onSuccess()
     }
   }
 
