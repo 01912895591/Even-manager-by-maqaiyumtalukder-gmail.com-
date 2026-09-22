@@ -201,12 +201,24 @@ fun EventManagerApp(viewModel: EventViewModel) {
             NavigationBarItem(
               selected = isSelected,
               onClick = {
-                navController.navigate(item.route) {
-                  popUpTo(Routes.DASHBOARD) {
-                    saveState = true
+                if (currentRoute == item.route) return@NavigationBarItem
+
+                if (item.route == Routes.DASHBOARD) {
+                  val popped = navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+                  if (!popped) {
+                    navController.navigate(Routes.DASHBOARD) {
+                      popUpTo(0)
+                      launchSingleTop = true
+                    }
                   }
-                  launchSingleTop = true
-                  restoreState = true
+                } else {
+                  navController.navigate(item.route) {
+                    popUpTo(Routes.DASHBOARD) {
+                      saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                  }
                 }
               },
               icon = {
@@ -357,7 +369,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
             navController.navigate(Routes.NEW_EVENT)
           },
           onAddContactClick = {
-            navController.navigate(Routes.CONTACTS)
+            navController.navigate(Routes.CONTACTS) {
+              popUpTo(Routes.DASHBOARD) { saveState = true }
+              launchSingleTop = true
+              restoreState = true
+            }
           },
           onAddExpenseClick = { eventId ->
             if (eventId != null) {
@@ -374,10 +390,18 @@ fun EventManagerApp(viewModel: EventViewModel) {
             navController.navigate(Routes.EVENT_DETAIL)
           },
           onSeeAllEventsClick = {
-            navController.navigate(Routes.EVENTS)
+            navController.navigate(Routes.EVENTS) {
+              popUpTo(Routes.DASHBOARD) { saveState = true }
+              launchSingleTop = true
+              restoreState = true
+            }
           },
           onProfileClick = {
-            navController.navigate(Routes.SETTINGS)
+            navController.navigate(Routes.SETTINGS) {
+              popUpTo(Routes.DASHBOARD) { saveState = true }
+              launchSingleTop = true
+              restoreState = true
+            }
           },
           onDeleteEvent = { event ->
             viewModel.deleteEvent(event) {}
@@ -632,6 +656,15 @@ fun EventManagerApp(viewModel: EventViewModel) {
         SettingsScreen(
           currentUser = currentUser,
           settings = settings,
+          onBackClick = {
+            val popped = navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+            if (!popped) {
+              navController.navigate(Routes.DASHBOARD) {
+                popUpTo(0)
+                launchSingleTop = true
+              }
+            }
+          },
           onUpdateLanguage = { lang -> viewModel.updateLanguage(lang) },
           onToggleDarkMode = { enabled -> viewModel.toggleDarkMode(enabled) },
           onUpdateCurrency = { curr -> viewModel.updateCurrency(curr) },

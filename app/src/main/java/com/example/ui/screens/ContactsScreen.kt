@@ -386,130 +386,157 @@ fun ContactsScreen(
               color = MaterialTheme.colorScheme.surface,
               tonalElevation = 1.dp
             ) {
-              Row(
+              Column(
                 modifier = Modifier
                   .fillMaxWidth()
-                  .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
+                  .padding(14.dp)
               ) {
-                InitialsAvatar(
-                  name = contact.name,
-                  backgroundColorHex = contact.avatarColorHex,
-                  size = 46.dp
-                )
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    text = contact.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                // Top Row: Avatar + Info (Name, Phone) + Action Buttons
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  InitialsAvatar(
+                    name = contact.name,
+                    backgroundColorHex = contact.avatarColorHex,
+                    size = 46.dp
                   )
 
-                  Spacer(modifier = Modifier.height(2.dp))
+                  Spacer(modifier = Modifier.width(12.dp))
 
-                  Spacer(modifier = Modifier.height(3.dp))
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = contact.name,
+                      style = MaterialTheme.typography.titleMedium,
+                      fontWeight = FontWeight.Bold,
+                      color = MaterialTheme.colorScheme.onSurface,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis
+                    )
 
-                  Text(
-                    text = contact.phone,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                  )
+                    Spacer(modifier = Modifier.height(3.dp))
 
-                  Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                      text = contact.phone,
+                      style = MaterialTheme.typography.bodyMedium,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      fontWeight = FontWeight.Medium,
+                      maxLines = 1,
+                      softWrap = false,
+                      overflow = TextOverflow.Ellipsis
+                    )
+                  }
 
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    val catLower = contact.relation.trim().lowercase()
-                    val badgeBg = when (catLower) {
-                      "vendor" -> DeepPlum.copy(alpha = 0.14f)
-                      "friend" -> AccentGold.copy(alpha = 0.28f)
-                      "family" -> Emerald.copy(alpha = 0.15f)
-                      else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                    val badgeTextColor = when (catLower) {
-                      "vendor" -> DeepPlum
-                      "friend" -> PlumDark
-                      "family" -> Emerald
-                      else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                  Spacer(modifier = Modifier.width(6.dp))
 
+                  // Action buttons (Call, Edit, Delete)
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                  ) {
+                    // Call button with distinct rounded shape
                     Surface(
-                      modifier = Modifier.clip(RoundedCornerShape(4.dp)),
-                      color = badgeBg
+                      shape = CircleShape,
+                      color = AccentGold.copy(alpha = 0.22f),
+                      modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                          val intent = Intent(Intent.ACTION_DIAL).apply {
+                            data = Uri.parse("tel:${contact.phone}")
+                          }
+                          try {
+                            context.startActivity(intent)
+                          } catch (e: Exception) {
+                            // Handle no dialer app
+                          }
+                        }
                     ) {
-                      Text(
-                        text = contact.relation,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = badgeTextColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                      Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                          imageVector = Icons.Default.Call,
+                          contentDescription = "Call ${contact.name}",
+                          tint = PlumDark,
+                          modifier = Modifier.size(17.dp)
+                        )
+                      }
+                    }
+
+                    // Edit button
+                    IconButton(
+                      onClick = { contactToEdit = contact },
+                      modifier = Modifier.size(34.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit ${contact.name}",
+                        tint = DeepPlum,
+                        modifier = Modifier.size(18.dp)
                       )
                     }
 
-                    if (eventsCount > 0) {
-                      Spacer(modifier = Modifier.width(8.dp))
-                      Text(
-                        text = "• Invited to $eventsCount event(s)",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = DeepPlum,
-                        fontSize = 11.sp
+                    // Delete button
+                    IconButton(
+                      onClick = { onDeleteContact(contact) },
+                      modifier = Modifier.size(34.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
                       )
                     }
                   }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  // Call button
-                  IconButton(
-                    onClick = {
-                      val intent = Intent(Intent.ACTION_DIAL).apply {
-                        data = Uri.parse("tel:${contact.phone}")
-                      }
-                      try {
-                        context.startActivity(intent)
-                      } catch (e: Exception) {
-                        // Handle no dialer app
-                      }
-                    },
-                    modifier = Modifier.size(38.dp)
+                // Sub-Row: Relation Badge + Event tag
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = BorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val catLower = contact.relation.trim().lowercase()
+                val badgeBg = when (catLower) {
+                  "vendor" -> DeepPlum.copy(alpha = 0.14f)
+                  "friend" -> AccentGold.copy(alpha = 0.28f)
+                  "family" -> Emerald.copy(alpha = 0.15f)
+                  else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val badgeTextColor = when (catLower) {
+                  "vendor" -> DeepPlum
+                  "friend" -> PlumDark
+                  "family" -> Emerald
+                  else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                  Surface(
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)),
+                    color = badgeBg
                   ) {
-                    Icon(
-                      imageVector = Icons.Default.Call,
-                      contentDescription = "Call ${contact.name}",
-                      tint = DeepPlum,
-                      modifier = Modifier.size(20.dp)
+                    Text(
+                      text = contact.relation,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = badgeTextColor,
+                      fontSize = 11.sp,
+                      fontWeight = FontWeight.Bold,
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                   }
 
-                  // Edit button
-                  IconButton(
-                    onClick = { contactToEdit = contact },
-                    modifier = Modifier.size(38.dp)
-                  ) {
-                    Icon(
-                      imageVector = Icons.Default.Edit,
-                      contentDescription = "Edit ${contact.name}",
-                      tint = DeepPlum,
-                      modifier = Modifier.size(20.dp)
-                    )
-                  }
-
-                  // Delete button
-                  IconButton(
-                    onClick = { onDeleteContact(contact) },
-                    modifier = Modifier.size(38.dp)
-                  ) {
-                    Icon(
-                      imageVector = Icons.Default.Delete,
-                      contentDescription = "Delete",
-                      tint = TextMuted,
-                      modifier = Modifier.size(20.dp)
+                  if (eventsCount > 0) {
+                    Text(
+                      text = if (language == "bn") "• $eventsCount টি ইভেন্টে আমন্ত্রিত" else "• Invited to $eventsCount event${if (eventsCount > 1) "s" else ""}",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = DeepPlum,
+                      fontSize = 11.5.sp,
+                      fontWeight = FontWeight.Medium,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis
                     )
                   }
                 }

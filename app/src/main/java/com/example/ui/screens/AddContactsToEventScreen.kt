@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -321,6 +322,7 @@ fun AddContactsToEventScreen(
               .height(46.dp)
               .testTag("add_guests_import_button"),
             shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
             colors = ButtonDefaults.buttonColors(
               containerColor = AccentGold,
               contentColor = PlumDark
@@ -330,41 +332,47 @@ fun AddContactsToEventScreen(
               imageVector = Icons.Default.PhoneAndroid,
               contentDescription = null,
               tint = PlumDark,
-              modifier = Modifier.size(18.dp)
+              modifier = Modifier.size(17.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
               text = AppStrings.get("import_phone", language),
-              style = MaterialTheme.typography.labelMedium,
-              fontWeight = FontWeight.Bold
+              fontSize = 12.5.sp,
+              fontWeight = FontWeight.Bold,
+              maxLines = 1,
+              softWrap = false,
+              overflow = TextOverflow.Ellipsis
             )
           }
 
-          // Add new contact
-          OutlinedButton(
+          // Add new contact CTA
+          Button(
             onClick = { showNewContactDialog = true },
             modifier = Modifier
               .weight(1f)
               .height(46.dp)
               .testTag("add_guests_new_button"),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-              containerColor = MaterialTheme.colorScheme.surface
-            ),
-            border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = AccentGold,
+              contentColor = PlumDark
+            )
           ) {
             Icon(
               imageVector = Icons.Default.PersonAdd,
               contentDescription = null,
-              tint = DeepPlum,
-              modifier = Modifier.size(18.dp)
+              tint = PlumDark,
+              modifier = Modifier.size(17.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
               text = AppStrings.get("add_new_contact", language),
-              style = MaterialTheme.typography.labelMedium,
-              fontWeight = FontWeight.SemiBold,
-              color = DeepPlum
+              fontSize = 12.5.sp,
+              fontWeight = FontWeight.Bold,
+              maxLines = 1,
+              softWrap = false,
+              overflow = TextOverflow.Ellipsis
             )
           }
         }
@@ -487,7 +495,9 @@ fun AddContactsToEventScreen(
                   text = contact.name,
                   style = MaterialTheme.typography.bodyLarge,
                   fontWeight = FontWeight.SemiBold,
-                  color = MaterialTheme.colorScheme.onBackground
+                  color = MaterialTheme.colorScheme.onBackground,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -507,7 +517,10 @@ fun AddContactsToEventScreen(
                   Text(
                     text = contact.phone,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
+                    color = TextMuted,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
                   )
                 }
               }

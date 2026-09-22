@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
@@ -37,6 +38,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -83,6 +85,7 @@ fun SettingsScreen(
   onUpdateGoogleWebClientId: (String) -> Unit = {},
   onToggleAutoLoginWithGoogle: (Boolean) -> Unit = {},
   onLogOut: () -> Unit,
+  onBackClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   var currencyMenuExpanded by remember { mutableStateOf(false) }
@@ -109,9 +112,24 @@ fun SettingsScreen(
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 20.dp, vertical = 16.dp),
+          .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
+        if (onBackClick != null) {
+          IconButton(
+            onClick = onBackClick,
+            modifier = Modifier
+              .testTag("settings_back_button")
+              .size(38.dp)
+          ) {
+            Icon(
+              imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+              contentDescription = "Back",
+              tint = MaterialTheme.colorScheme.onSurface
+            )
+          }
+          Spacer(modifier = Modifier.width(6.dp))
+        }
         Text(
           text = AppStrings.get("settings", settings.language),
           style = MaterialTheme.typography.headlineLarge,
