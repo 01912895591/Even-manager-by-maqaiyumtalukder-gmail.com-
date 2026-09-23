@@ -20,19 +20,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -41,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -82,13 +87,14 @@ fun SettingsScreen(
   onUpdateCurrency: (String) -> Unit,
   onUpdateAccentColor: (String) -> Unit,
   onToggleNotifications: (Boolean) -> Unit,
-  onUpdateGoogleWebClientId: (String) -> Unit = {},
-  onToggleAutoLoginWithGoogle: (Boolean) -> Unit = {},
-  onLogOut: () -> Unit,
+  onUpdateProfile: (name: String, email: String) -> Unit = { _, _ -> },
   onBackClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   var currencyMenuExpanded by remember { mutableStateOf(false) }
+  var showEditProfileDialog by remember { mutableStateOf(false) }
+  var editName by remember(currentUser) { mutableStateOf(currentUser?.name ?: "Event Planner") }
+  var editEmail by remember(currentUser) { mutableStateOf(currentUser?.email ?: "") }
   val currencies = listOf("৳", "$", "€", "£", "₹", "SAR", "AED")
   val accentColors = listOf(
     "#D4AF6A" to "Royal Gold",
@@ -147,7 +153,7 @@ fun SettingsScreen(
         .padding(20.dp),
       verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-      // 1. Account Card at the Top
+      // 1. User Profile & Local Identity Card
       Surface(
         modifier = Modifier
           .fillMaxWidth()
@@ -180,41 +186,113 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurface
               )
               Text(
-                text = currentUser?.email ?: "",
+                text = if (currentUser?.email.isNullOrBlank()) {
+                  if (settings.language == "bn") "ডিভাইস লোকাল প্রোফাইল" else "Device Local Profile"
+                } else {
+                  currentUser?.email.orEmpty()
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
               )
             }
+
+            IconButton(
+              onClick = {
+                editName = currentUser?.name?.ifBlank { "Event Planner" } ?: "Event Planner"
+                editEmail = currentUser?.email ?: ""
+                showEditProfileDialog = true
+              },
+              modifier = Modifier.testTag("settings_edit_profile_button")
+            ) {
+              Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Edit Profile",
+                tint = DeepPlum
+              )
+            }
           }
 
-          Spacer(modifier = Modifier.height(16.dp))
+          Spacer(modifier = Modifier.height(14.dp))
 
-          // "Log out" Button
-          OutlinedButton(
-            onClick = onLogOut,
+          // Offline Status Badge
+          Row(
             modifier = Modifier
               .fillMaxWidth()
-              .height(44.dp)
-              .testTag("settings_logout_button"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
-            border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+              .clip(RoundedCornerShape(10.dp))
+              .background(Emerald.copy(alpha = 0.08f))
+              .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
           ) {
-            Icon(Icons.Default.Logout, contentDescription = "Log out", modifier = Modifier.size(18.dp), tint = DangerRed)
+            Icon(
+              imageVector = Icons.Default.CheckCircle,
+              contentDescription = null,
+              tint = Emerald,
+              modifier = Modifier.size(16.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = AppStrings.get("logout", settings.language),
-              fontWeight = FontWeight.Bold,
-              color = DangerRed
+              text = if (settings.language == "bn") "সরাসরি ব্যবহারের জন্য সক্রিয় • কোনো পাসওয়ার্ডের প্রয়োজন নেই" else "Ready to use • Direct local access, no login needed",
+              style = MaterialTheme.typography.bodySmall,
+              color = Emerald,
+              fontWeight = FontWeight.Medium,
+              fontSize = 11.sp
             )
           }
         }
       }
 
-      // Account Security & Privacy Section
+      // Dialog to Edit Profile Name and Email
+      if (showEditProfileDialog) {
+        AlertDialog(
+          onDismissRequest = { showEditProfileDialog = false },
+          title = {
+            Text(
+              text = if (settings.language == "bn") "প্রোফাইল পরিবর্তন" else "Edit Profile",
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.Bold
+            )
+          },
+          text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              OutlinedTextField(
+                value = editName,
+                onValueChange = { editName = it },
+                label = { Text(if (settings.language == "bn") "আপনার নাম" else "Your Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+              )
+              OutlinedTextField(
+                value = editEmail,
+                onValueChange = { editEmail = it },
+                label = { Text(if (settings.language == "bn") "ইমেইল (ঐচ্ছিক)" else "Email (Optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+              )
+            }
+          },
+          confirmButton = {
+            Button(
+              onClick = {
+                onUpdateProfile(editName, editEmail)
+                showEditProfileDialog = false
+              },
+              colors = ButtonDefaults.buttonColors(containerColor = AccentGold, contentColor = PlumDark)
+            ) {
+              Text(if (settings.language == "bn") "সংরক্ষণ" else "Save")
+            }
+          },
+          dismissButton = {
+            OutlinedButton(onClick = { showEditProfileDialog = false }) {
+              Text(if (settings.language == "bn") "বাতিল" else "Cancel")
+            }
+          }
+        )
+      }
+
+      // Local Data Security & Privacy Section
       Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-          text = if (settings.language == "bn") "অ্যাকাউন্ট ও ডেটা নিরাপত্তা" else "Account Security & Privacy",
+          text = if (settings.language == "bn") "ডিভাইস ও ডেটা নিরাপত্তা" else "Data Privacy & Storage",
           style = MaterialTheme.typography.titleMedium,
           fontFamily = FontFamily.Serif,
           fontWeight = FontWeight.Bold,
@@ -232,7 +310,6 @@ fun SettingsScreen(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
           ) {
-            // 1. Account Protection Status Card
             Row(
               modifier = Modifier
                 .fillMaxWidth()
@@ -263,13 +340,13 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                   Text(
-                    text = if (settings.language == "bn") "অ্যাকাউন্ট সুরক্ষিত (Secured)" else "Account Protected",
+                    text = if (settings.language == "bn") "১০০% প্রাইভেট ও অফলাইন" else "100% Private & Offline",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = Emerald
                   )
                   Text(
-                    text = if (settings.language == "bn") "গুগল অথেন্টিকেশন ও নিরাপদ এনক্রিপ্টেড সেশন সক্রিয়" else "Secured via Google Auth & encrypted session tokens",
+                    text = if (settings.language == "bn") "কোনো অনলাইন সার্ভারে ডাটা যায় না, ফোনেই সুরক্ষিত থাকে" else "Data stays strictly inside your device's isolated storage",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                     fontSize = 11.sp
@@ -281,57 +358,17 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(8.dp),
                 color = Emerald.copy(alpha = 0.15f)
               ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Box(
-                    modifier = Modifier
-                      .size(6.dp)
-                      .clip(CircleShape)
-                      .background(Emerald)
-                  )
-                  Spacer(modifier = Modifier.width(5.dp))
-                  Text(
-                    text = if (settings.language == "bn") "সুরক্ষিত" else "Protected",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Emerald
-                  )
-                }
+                Text(
+                  text = if (settings.language == "bn") "সুরক্ষিত" else "Private",
+                  style = MaterialTheme.typography.labelSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = Emerald,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
               }
             }
 
-            // 2. Google Auto-Login Switch
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Column(modifier = Modifier.weight(1f)) {
-                Text(
-                  text = if (settings.language == "bn") "স্বয়ংক্রিয় দ্রুত লগইন (Auto-Login)" else "Quick Auto-Login",
-                  style = MaterialTheme.typography.bodyMedium,
-                  fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                  text = if (settings.language == "bn") "অ্যাপ খোলার সাথে সাথে ক্রেডেনশিয়াল ম্যানেজার দিয়ে নিরাপদে সাইন-ইন হবে" else "Seamlessly authenticate on app startup using Android Credential Manager",
-                  style = MaterialTheme.typography.bodySmall,
-                  color = TextMuted
-                )
-              }
-              Spacer(modifier = Modifier.width(12.dp))
-              Switch(
-                checked = settings.autoLoginWithGoogleEnabled,
-                onCheckedChange = { onToggleAutoLoginWithGoogle(it) },
-                colors = SwitchDefaults.colors(
-                  checkedThumbColor = Color.White,
-                  checkedTrackColor = Emerald
-                )
-              )
-            }
-
-            // 3. Local Data Vault & Device Privacy Indicator
+            // Local Data Vault Card
             Row(
               modifier = Modifier
                 .fillMaxWidth()
@@ -357,13 +394,13 @@ fun SettingsScreen(
               Spacer(modifier = Modifier.width(12.dp))
               Column(modifier = Modifier.weight(1f)) {
                 Text(
-                  text = if (settings.language == "bn") "স্থানীয় ডিভাইস ভল্ট (Offline Vault)" else "Encrypted Local Storage",
+                  text = if (settings.language == "bn") "স্থানীয় ডাটাবেজ (Room Database)" else "Local Room Database",
                   style = MaterialTheme.typography.bodyMedium,
                   fontWeight = FontWeight.Bold,
                   color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                  text = if (settings.language == "bn") "আপনার ইভেন্ট, বাজেট ও পরিচিতির সমস্ত তথ্য নিরাপদ ও সুরক্ষিত।" else "Budgets, expenses & contacts are stored safely in isolated app sandbox.",
+                  text = if (settings.language == "bn") "আপনার ইভেন্ট, বাজেট ও পরিচিতির সমস্ত তথ্য ফোনে সুরক্ষিত।" else "Events, checklists, guests and budgets are saved locally.",
                   style = MaterialTheme.typography.bodySmall,
                   color = TextMuted,
                   fontSize = 11.sp

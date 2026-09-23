@@ -291,6 +291,22 @@ class EventRepository(private val db: AppDatabase) {
     Pair(true, null)
   }
 
+  suspend fun updateProfile(name: String, email: String) = withContext(Dispatchers.IO) {
+    val current = db.userDao().getCurrentUser().firstOrNull()
+    if (current != null) {
+      db.userDao().saveUser(current.copy(name = name.trim().ifEmpty { "Event Planner" }, email = email.trim()))
+    } else {
+      db.userDao().saveUser(
+        UserEntity(
+          name = name.trim().ifEmpty { "Event Planner" },
+          email = email.trim(),
+          isLoggedIn = true,
+          authProvider = "local"
+        )
+      )
+    }
+  }
+
   suspend fun logOutUser() = withContext(Dispatchers.IO) {
     db.userDao().logOutAll()
   }

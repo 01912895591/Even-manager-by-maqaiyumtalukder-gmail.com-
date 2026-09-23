@@ -117,6 +117,9 @@ object GoogleAuthService {
     activity: Activity,
     clientId: String
   ): Result<GoogleUserInfo> = withContext(Dispatchers.IO) {
+    val pkgName = activity.packageName
+    Log.d(TAG, "Initiating Google Sign-In for $pkgName")
+
     try {
       val credentialManager = CredentialManager.create(activity)
       val googleIdOption = GetGoogleIdOption.Builder()
@@ -145,6 +148,8 @@ object GoogleAuthService {
         val photo = googleIdTokenCredential.profilePictureUri?.toString()
         val token = googleIdTokenCredential.idToken
 
+        Log.i(TAG, "Google Sign-In successful for $email")
+
         return@withContext Result.success(
           GoogleUserInfo(
             idToken = token,
@@ -154,10 +159,16 @@ object GoogleAuthService {
           )
         )
       } else {
-        return@withContext Result.failure(Exception("Unsupported credential type received from Google."))
+        val receivedType = (credential as? CustomCredential)?.type ?: credential.javaClass.simpleName
+        Log.w(TAG, "Received unsupported credential type: $receivedType")
+        return@withContext Result.failure(Exception("Unsupported credential type received from Google ($receivedType)."))
       }
     } catch (e: GetCredentialCancellationException) {
+      Log.d(TAG, "User cancelled Google Sign-In")
       return@withContext Result.failure(Exception("Sign-in cancelled by user."))
+    } catch (e: NoCredentialException) {
+      Log.w(TAG, "No Google Account found on device: ${e.message}")
+      return@withContext Result.failure(e)
     } catch (e: GetCredentialException) {
       Log.w(TAG, "CredentialManager error: ${e.type} - ${e.message}")
       return@withContext Result.failure(e)

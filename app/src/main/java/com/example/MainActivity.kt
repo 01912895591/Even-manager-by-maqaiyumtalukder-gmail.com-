@@ -175,15 +175,6 @@ fun EventManagerApp(viewModel: EventViewModel) {
     Routes.SETTINGS
   )
 
-  LaunchedEffect(currentUser?.isLoggedIn, currentRoute) {
-    if (currentUser?.isLoggedIn == true && (currentRoute == Routes.SIGN_IN || currentRoute == Routes.SIGN_UP)) {
-      navController.navigate(Routes.DASHBOARD) {
-        popUpTo(Routes.SIGN_IN) { inclusive = true }
-        launchSingleTop = true
-      }
-    }
-  }
-
   Scaffold(
     modifier = Modifier.fillMaxSize(),
     bottomBar = {
@@ -253,7 +244,7 @@ fun EventManagerApp(viewModel: EventViewModel) {
   ) { innerPadding ->
     NavHost(
       navController = navController,
-      startDestination = Routes.SIGN_IN,
+      startDestination = Routes.DASHBOARD,
       modifier = Modifier
         .fillMaxSize()
         .padding(innerPadding)
@@ -485,6 +476,10 @@ fun EventManagerApp(viewModel: EventViewModel) {
             val eventId = selectedEvent?.id ?: return@EventDetailScreen
             viewModel.toggleGuestForEvent(eventId, contactId, false)
           },
+          onImportPhoneVendors = { list ->
+            val eventId = selectedEvent?.id
+            viewModel.importPhoneContacts(list, eventId)
+          },
           eventDays = selectedEventDays,
           onAddEventDay = { dayTitle, dateFormatted, timeFormatted, dateTimeMillis, location, notes ->
             viewModel.addEventDay(dayTitle, dateFormatted, timeFormatted, dateTimeMillis, location, notes)
@@ -670,15 +665,7 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onUpdateCurrency = { curr -> viewModel.updateCurrency(curr) },
           onUpdateAccentColor = { colorHex -> viewModel.updateAccentColor(colorHex) },
           onToggleNotifications = { enabled -> viewModel.toggleNotifications(enabled) },
-          onUpdateGoogleWebClientId = { newId -> viewModel.updateGoogleWebClientId(newId) },
-          onToggleAutoLoginWithGoogle = { enabled -> viewModel.toggleAutoLoginWithGoogle(enabled) },
-          onLogOut = {
-            viewModel.logOut {
-              navController.navigate(Routes.SIGN_IN) {
-                popUpTo(0) { inclusive = true }
-              }
-            }
-          }
+          onUpdateProfile = { name, email -> viewModel.updateProfile(name, email) }
         )
       }
     }

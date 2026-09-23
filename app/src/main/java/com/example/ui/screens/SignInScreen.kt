@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
@@ -41,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -69,7 +71,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.auth.GoogleAuthService
 import com.example.ui.components.ForgotPasswordSheet
-import com.example.ui.components.GoogleAccountSignInDialog
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.AccentGoldLight
 import com.example.ui.theme.BorderSubtle
@@ -106,7 +107,6 @@ fun SignInScreen(
   var isGoogleSubmitting by remember { mutableStateOf(false) }
   var isAutoLoggingIn by remember { mutableStateOf(false) }
   var showForgotPasswordSheet by remember { mutableStateOf(false) }
-  var showGoogleSignInDialog by remember { mutableStateOf(false) }
 
   // Automatic Google Auto-Login quietly on screen launch
   LaunchedEffect(Unit) {
@@ -129,7 +129,7 @@ fun SignInScreen(
     val activeClientId = GoogleAuthService.getActiveClientId(googleWebClientId)
 
     if (activity == null) {
-      showGoogleSignInDialog = true
+      errorMessage = "Google Sign-In is unavailable (Activity context missing)."
       return
     }
 
@@ -144,12 +144,12 @@ fun SignInScreen(
         onGoogleSignInConfirmed(user.displayName, user.email, user.photoUrl)
       }.onFailure { err ->
         val msg = err.message ?: ""
-        if (msg.contains("cancelled", ignoreCase = true)) {
+        if (msg.contains("cancelled", ignoreCase = true) || err is androidx.credentials.exceptions.GetCredentialCancellationException) {
           // User swiped or dismissed Google account prompt
+        } else if (err is androidx.credentials.exceptions.NoCredentialException || msg.contains("no credential", ignoreCase = true)) {
+          errorMessage = "No Google account found in this emulator/device session. If using this browser preview, please create an account or sign in with email & password below."
         } else {
-          // Device/emulator has no Google credentials registered or restriction encountered
-          errorMessage = null
-          showGoogleSignInDialog = true
+          errorMessage = "Google Sign-In: ${err.localizedMessage ?: err.message ?: "Sign-in could not be completed"}"
         }
       }
     }
@@ -200,32 +200,6 @@ fun SignInScreen(
         password = ""
         errorMessage = null
       }
-    )
-  }
-
-  // Google Account Chooser & Fallback Dialog
-  if (showGoogleSignInDialog) {
-    val suggestedAccounts = remember(email) {
-      val list = mutableListOf<String>()
-      if (email.isNotBlank() && email.contains("@")) {
-        list.add(email.trim())
-      }
-      if (!list.contains("maqaiyumtalukder@gmail.com")) {
-        list.add("maqaiyumtalukder@gmail.com")
-      }
-      list
-    }
-
-    GoogleAccountSignInDialog(
-      deviceAccounts = suggestedAccounts,
-      initialEmail = if (email.isNotBlank()) email.trim() else "maqaiyumtalukder@gmail.com",
-      onConfirm = { name, confirmedEmail ->
-        showGoogleSignInDialog = false
-        errorMessage = null
-        onGoogleSignInConfirmed(name, confirmedEmail, null)
-      },
-      onDismiss = { showGoogleSignInDialog = false },
-      language = language
     )
   }
 
@@ -291,7 +265,7 @@ fun SignInScreen(
         .padding(bottom = 24.dp),
       horizontalAlignment = Alignment.Start
     ) {
-      // Screen Title & Subtitle (Replacing redundant top tab switcher)
+      // Screen Title & Header
       Text(
         text = AppStrings.get("sign_in", language),
         style = MaterialTheme.typography.titleLarge,
@@ -303,8 +277,10 @@ fun SignInScreen(
         style = MaterialTheme.typography.bodySmall,
         color = TextMuted,
         fontSize = 12.sp,
-        modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
+        modifier = Modifier.padding(top = 2.dp)
       )
+
+      Spacer(modifier = Modifier.height(14.dp))
 
       // Error Alert Banner
       AnimatedVisibility(visible = errorMessage != null) {
@@ -312,12 +288,24 @@ fun SignInScreen(
           modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .border(
+              width = 1.dp,
+              color = MaterialTheme.colorScheme.error.copy(alpha = 0.4f),
+              shape = RoundedCornerShape(12.dp)
+            )
             .testTag("signin_error_banner"),
           color = MaterialTheme.colorScheme.errorContainer
         ) {
-          Column(modifier = Modifier.padding(10.dp)) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
             Row(
+              modifier = Modifier.weight(1f),
               verticalAlignment = Alignment.CenterVertically
             ) {
               Icon(
@@ -332,33 +320,23 @@ fun SignInScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 fontWeight = FontWeight.Medium,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                lineHeight = 16.sp
               )
             }
-            if (errorMessage?.contains("Google", ignoreCase = true) == true ||
-                errorMessage?.contains("credential", ignoreCase = true) == true) {
-              Spacer(modifier = Modifier.height(8.dp))
-              Button(
-                onClick = {
-                  errorMessage = null
-                  showGoogleSignInDialog = true
-                },
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .height(38.dp)
-                  .testTag("signin_error_google_recovery_button"),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                  containerColor = DeepPlum,
-                  contentColor = Color.White
-                )
-              ) {
-                Text(
-                  text = if (language == "bn") "Google অ্যাকাউন্ট দিয়ে সাইন-ইন করুন" else "Sign in with Google Account",
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold
-                )
-              }
+
+            IconButton(
+              onClick = { errorMessage = null },
+              modifier = Modifier
+                .size(24.dp)
+                .testTag("signin_error_dismiss_button")
+            ) {
+              Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Dismiss",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(16.dp)
+              )
             }
           }
         }
@@ -578,7 +556,7 @@ fun SignInScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(20.dp))
+      Spacer(modifier = Modifier.height(16.dp))
 
       // Single, Clean Way to Switch to Sign Up
       Row(

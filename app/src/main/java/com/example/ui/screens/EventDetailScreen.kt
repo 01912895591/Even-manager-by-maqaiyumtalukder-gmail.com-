@@ -1,5 +1,14 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.provider.ContactsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.core.content.ContextCompat
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
@@ -62,6 +71,10 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -145,6 +158,7 @@ fun EventDetailScreen(
   onAddVendorToEvent: (name: String, phone: String, note: String) -> Unit = { _, _, _ -> },
   onRemoveVendorFromEvent: (contactId: Long) -> Unit = {},
   onLinkContactToEvent: (contactId: Long) -> Unit = {},
+  onImportPhoneVendors: (List<Triple<String, String, String>>) -> Unit = {},
   eventDays: List<EventDayEntity> = emptyList(),
   onAddEventDay: (dayTitle: String, dateFormatted: String, timeFormatted: String, dateTimeMillis: Long, location: String, notes: String) -> Unit = { _, _, _, _, _, _ -> },
   onUpdateEventDay: (EventDayEntity) -> Unit = {},
@@ -432,6 +446,7 @@ fun EventDetailScreen(
           onAddNewVendor = onAddVendorToEvent,
           onRemoveVendor = onRemoveVendorFromEvent,
           onLinkExistingContactAsVendor = onLinkContactToEvent,
+          onImportPhoneVendors = onImportPhoneVendors,
           language = language
         )
 
@@ -843,6 +858,7 @@ fun GuestRowItem(
   }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VendorsTabContent(
   eventGuests: List<EventContactCrossRef>,
@@ -852,11 +868,69 @@ fun VendorsTabContent(
   onAddNewVendor: (name: String, phone: String, note: String) -> Unit = { _, _, _ -> },
   onRemoveVendor: (contactId: Long) -> Unit = {},
   onLinkExistingContactAsVendor: (contactId: Long) -> Unit = {},
+  onImportPhoneVendors: (List<Triple<String, String, String>>) -> Unit = {},
   language: String = "en"
 ) {
   val context = LocalContext.current
   var showAddVendorDialog by remember { mutableStateOf(false) }
   var vendorToEdit by remember { mutableStateOf<ContactEntity?>(null) }
+  var showPhoneVendorsSheet by remember { mutableStateOf(false) }
+
+  // Phone contacts state for importing vendors
+  var phoneContactsList by remember { mutableStateOf<List<PhoneContactItem>>(emptyList()) }
+  var phoneSearchQuery by remember { mutableStateOf("") }
+  var selectedPhoneVendors by remember { mutableStateOf<Set<PhoneContactItem>>(emptySet()) }
+  var selectedVendorRoleForImport by remember { mutableStateOf("Catering") }
+
+  // Helper to load real phone contacts if permission is available
+  fun loadDeviceContacts(ctx: Context): List<PhoneContactItem> {
+    val list = mutableListOf<PhoneContactItem>()
+    try {
+      if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+        val cursor: Cursor? = ctx.contentResolver.query(
+          ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+          arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+          ),
+          null,
+          null,
+          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+        )
+        cursor?.use {
+          val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+          val phoneIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+          val seenPhones = mutableSetOf<String>()
+          while (it.moveToNext()) {
+            val name = it.getString(nameIdx) ?: "Unknown"
+            val phone = it.getString(phoneIdx)?.replace(" ", "") ?: ""
+            if (phone.isNotBlank() && seenPhones.add(phone)) {
+              list.add(PhoneContactItem(name = name, phone = phone, category = "Vendor"))
+            }
+          }
+        }
+      }
+    } catch (e: Exception) {
+      // Graceful fallback
+    }
+    return list
+  }
+
+  val permissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission()
+  ) { isGranted ->
+    phoneContactsList = loadDeviceContacts(context)
+    showPhoneVendorsSheet = true
+  }
+
+  fun triggerPhoneImport() {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+      phoneContactsList = loadDeviceContacts(context)
+      showPhoneVendorsSheet = true
+    } else {
+      permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+    }
+  }
 
   val guestContactIds = remember(eventGuests) {
     eventGuests.map { it.contactId }.toSet()
@@ -887,22 +961,57 @@ fun VendorsTabContent(
         color = MaterialTheme.colorScheme.onSurface
       )
 
-      Button(
-        onClick = { showAddVendorDialog = true },
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.buttonColors(
-          containerColor = AccentGold,
-          contentColor = PlumDark
-        ),
-        modifier = Modifier.testTag("event_add_vendor_button")
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
       ) {
-        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-          text = if (language == "bn") "ভেন্ডর যোগ করুন" else "Add Vendor",
-          style = MaterialTheme.typography.labelMedium,
-          fontWeight = FontWeight.Bold
-        )
+        // Import from Phone Button
+        Surface(
+          modifier = Modifier
+            .height(38.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { triggerPhoneImport() }
+            .testTag("event_import_vendor_phone_button"),
+          color = AccentGold.copy(alpha = 0.18f),
+          border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold)
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(
+              imageVector = Icons.Default.PhoneAndroid,
+              contentDescription = "Import from Phone",
+              tint = DeepPlum,
+              modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+              text = if (language == "bn") "ফোন থেকে ইমপোর্ট" else "Import Contact",
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              color = DeepPlum
+            )
+          }
+        }
+
+        Button(
+          onClick = { showAddVendorDialog = true },
+          shape = RoundedCornerShape(10.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = AccentGold,
+            contentColor = PlumDark
+          ),
+          modifier = Modifier.testTag("event_add_vendor_button")
+        ) {
+          Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text(
+            text = if (language == "bn") "ভেন্ডর যোগ" else "Add Vendor",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+          )
+        }
       }
     }
 
@@ -930,20 +1039,51 @@ fun VendorsTabContent(
           )
           Spacer(modifier = Modifier.height(6.dp))
           Text(
-            text = if (language == "bn") "ক্যাটারিং, স্টেজ, ফটোগ্রাফি ইত্যাদি ভেন্ডর যুক্ত করুন" else "Add caterers, photographers, decorators, sound systems, and more.",
+            text = if (language == "bn") "ক্যাটারিং, স্টেজ, ফটোগ্রাফি ইত্যাদি ভেন্ডর যুক্ত বা ফোন থেকে সরাসরি ইমপোর্ট করুন" else "Add caterers, photographers, decorators, sound systems, or import directly from phone contacts.",
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
           )
           Spacer(modifier = Modifier.height(18.dp))
-          Button(
-            onClick = { showAddVendorDialog = true },
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = DeepPlum, contentColor = Color.White)
-          ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(if (language == "bn") "প্রথম ভেন্ডর যোগ করুন" else "Add Your First Vendor", fontWeight = FontWeight.SemiBold)
+          Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+              onClick = { showAddVendorDialog = true },
+              shape = RoundedCornerShape(12.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = DeepPlum, contentColor = Color.White)
+            ) {
+              Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(if (language == "bn") "ভেন্ডর যোগ করুন" else "Add Vendor", fontWeight = FontWeight.SemiBold)
+            }
+
+            Surface(
+              modifier = Modifier
+                .height(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { triggerPhoneImport() }
+                .testTag("event_empty_import_vendor_phone_button"),
+              color = AccentGold.copy(alpha = 0.2f),
+              border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold)
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Default.PhoneAndroid,
+                  contentDescription = null,
+                  tint = PlumDark,
+                  modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = if (language == "bn") "ফোন থেকে আনুন" else "Import Contact",
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.sp,
+                  color = PlumDark
+                )
+              }
+            }
           }
         }
       }
@@ -1054,7 +1194,7 @@ fun VendorsTabContent(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
           )
-          Spacer(modifier = Modifier.height(8.dp))
+          Spacer(modifier = Modifier.height(10.dp))
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1078,11 +1218,46 @@ fun VendorsTabContent(
               )
             )
           }
+          Spacer(modifier = Modifier.height(6.dp))
+          Surface(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(8.dp))
+              .clickable {
+                showAddVendorDialog = false
+                triggerPhoneImport()
+              },
+            color = AccentGold.copy(alpha = 0.18f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, AccentGold.copy(alpha = 0.6f))
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                tint = PlumDark,
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = if (language == "bn") "ফোন কন্ট্যাক্ট থেকে সরাসরি ইমপোর্ট করুন" else "Import directly from phone contacts",
+                style = MaterialTheme.typography.labelSmall,
+                color = PlumDark,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
         }
       },
       text = {
         if (selectedTab == 0) {
-          Column(modifier = Modifier.fillMaxWidth()) {
+          Column(
+            modifier = Modifier
+              .fillMaxWidth()
+              .verticalScroll(rememberScrollState())
+          ) {
             OutlinedTextField(
               value = newVendorName,
               onValueChange = {
@@ -1369,6 +1544,226 @@ fun VendorsTabContent(
         }
       }
     )
+  }
+
+  // BottomSheet for importing phone contacts directly as event vendors
+  if (showPhoneVendorsSheet) {
+    val importRoles = listOf("Catering", "Photography", "Decoration", "Stage", "Music/DJ", "Venue", "Makeup", "Transport", "Vendor")
+    androidx.compose.material3.ModalBottomSheet(
+      onDismissRequest = { showPhoneVendorsSheet = false },
+      sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+      containerColor = MaterialTheme.colorScheme.surface
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 20.dp)
+          .padding(bottom = 24.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column {
+            Text(
+              text = if (language == "bn") "ফোন থেকে ভেন্ডর যুক্ত করুন" else "Import Phone Contacts as Vendors",
+              style = MaterialTheme.typography.titleLarge,
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.Bold,
+              color = DeepPlum
+            )
+            Text(
+              text = if (language == "bn") "ফোনবুক থেকে কন্ট্যাক্ট নির্বাচন করে সার্ভিস সিলেক্ট করুন" else "Select contacts and assign their service role",
+              style = MaterialTheme.typography.bodySmall,
+              color = TextMuted
+            )
+          }
+
+          IconButton(onClick = { showPhoneVendorsSheet = false }) {
+            Icon(Icons.Default.Close, contentDescription = "Close")
+          }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Role Selector for imported contacts
+        Text(
+          text = if (language == "bn") "সার্ভিসের ধরণ:" else "Assign Service Role:",
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        androidx.compose.foundation.lazy.LazyRow(
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          items(importRoles) { role ->
+            val isRoleSelected = selectedVendorRoleForImport == role
+            FilterChip(
+              selected = isRoleSelected,
+              onClick = { selectedVendorRoleForImport = role },
+              label = { Text(role, fontSize = 11.5.sp) },
+              colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = DeepPlum,
+                selectedLabelColor = Color.White
+              )
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedTextField(
+          value = phoneSearchQuery,
+          onValueChange = { phoneSearchQuery = it },
+          placeholder = { Text(if (language == "bn") "কন্ট্যাক্ট খুঁজুন..." else "Search phone contacts...", fontSize = 14.sp) },
+          leadingIcon = {
+            Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted)
+          },
+          singleLine = true,
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        val displayedPhoneContacts = remember(phoneContactsList, phoneSearchQuery) {
+          if (phoneSearchQuery.isBlank()) phoneContactsList
+          else phoneContactsList.filter {
+            it.name.contains(phoneSearchQuery, ignoreCase = true) ||
+            it.phone.contains(phoneSearchQuery)
+          }
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "${selectedPhoneVendors.size} selected",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = DeepPlum
+          )
+
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+              selectedPhoneVendors = displayedPhoneContacts.toSet()
+            }) {
+              Text("Select All", fontSize = 12.sp, color = AccentGold, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = { selectedPhoneVendors = emptySet() }) {
+              Text("Clear", fontSize = 12.sp, color = TextMuted)
+            }
+          }
+        }
+
+        HorizontalDivider(color = BorderSubtle)
+
+        if (displayedPhoneContacts.isEmpty()) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(180.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = if (phoneSearchQuery.isBlank()) "No contacts found on device." else "No matching contacts.",
+              style = MaterialTheme.typography.bodySmall,
+              color = TextMuted
+            )
+          }
+        } else {
+          LazyColumn(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(240.dp)
+          ) {
+            items(displayedPhoneContacts, key = { it.phone }) { contact ->
+              val isSelected = selectedPhoneVendors.contains(contact)
+
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable {
+                    selectedPhoneVendors = if (isSelected) {
+                      selectedPhoneVendors - contact
+                    } else {
+                      selectedPhoneVendors + contact
+                    }
+                  }
+                  .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                InitialsAvatar(name = contact.name, size = 38.dp)
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = contact.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                  )
+                  Text(
+                    text = contact.phone,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                  )
+                }
+
+                Checkbox(
+                  checked = isSelected,
+                  onCheckedChange = { checked ->
+                    selectedPhoneVendors = if (checked) {
+                      selectedPhoneVendors + contact
+                    } else {
+                      selectedPhoneVendors - contact
+                    }
+                  },
+                  colors = CheckboxDefaults.colors(checkedColor = DeepPlum)
+                )
+              }
+              HorizontalDivider(color = BorderSubtle.copy(alpha = 0.5f))
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Button(
+          onClick = {
+            val listToImport = selectedPhoneVendors.map {
+              Triple(it.name, it.phone, selectedVendorRoleForImport)
+            }
+            onImportPhoneVendors(listToImport)
+            selectedPhoneVendors = emptySet()
+            showPhoneVendorsSheet = false
+          },
+          enabled = selectedPhoneVendors.isNotEmpty(),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .testTag("confirm_import_phone_vendors_button"),
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = AccentGold,
+            contentColor = PlumDark
+          )
+        ) {
+          Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = if (language == "bn") "ইভেন্টে ভেন্ডর হিসেবে যুক্ত করুন (${selectedPhoneVendors.size})" else "Add as Event Vendors (${selectedPhoneVendors.size})",
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp
+          )
+        }
+      }
+    }
   }
 }
 

@@ -847,6 +847,13 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  fun updateProfile(name: String, email: String, onComplete: (() -> Unit)? = null) {
+    viewModelScope.launch {
+      repository.updateProfile(name, email)
+      onComplete?.invoke()
+    }
+  }
+
   fun logOut(onComplete: () -> Unit) {
     viewModelScope.launch {
       repository.logOutUser()
