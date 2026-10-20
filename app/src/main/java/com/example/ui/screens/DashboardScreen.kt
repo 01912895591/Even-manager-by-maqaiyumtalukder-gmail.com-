@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -150,7 +151,8 @@ fun DashboardScreen(
   // Toggle for showing Expense Overview breakdown on dashboard
   var showExpenseOverview by remember { mutableStateOf(false) }
 
-  // Global metrics
+  // Global metrics & pre-grouped map for smooth scrolling performance
+  val expensesByEventId = remember(expenses) { expenses.groupBy { it.eventId } }
   val totalPlannedBudget = events.sumOf { it.plannedBudget }
   val totalSpentAllEvents = expenses.sumOf { it.amount }
   val totalConfirmedRSVPs = allEventContacts.count { it.status == "Confirmed" }
@@ -180,7 +182,7 @@ fun DashboardScreen(
             modifier = Modifier
               .fillMaxWidth()
               .background(PlumDark)
-              .padding(top = 20.dp, bottom = 24.dp, start = 20.dp, end = 20.dp)
+              .padding(top = 12.dp, bottom = 12.dp, start = 16.dp, end = 16.dp)
           ) {
             Column(modifier = Modifier.fillMaxWidth()) {
               // Greeting & Avatar Header
@@ -192,12 +194,12 @@ fun DashboardScreen(
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
                     text = AppStrings.get("welcome_back", language),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     color = AccentGoldLight.copy(alpha = 0.85f)
                   )
                   Text(
                     text = currentUser?.name?.ifBlank { "Event Planner" } ?: "Event Planner",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontFamily = FontFamily.Serif,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -217,124 +219,111 @@ fun DashboardScreen(
                   InitialsAvatar(
                     name = currentUser?.name?.ifBlank { "Event Planner" } ?: "Event Planner",
                     backgroundColorHex = "#D4AF6A",
-                    size = 46.dp
+                    size = 38.dp
                   )
                 }
               }
 
-              Spacer(modifier = Modifier.height(18.dp))
+              Spacer(modifier = Modifier.height(10.dp))
 
-              // Comprehensive Metric & Budget Health Bar
+              // Sleek, Ultra-Compact Glassmorphism Metric Strip
+              val budgetPercentage = if (totalPlannedBudget > 0) {
+                ((totalSpentAllEvents / totalPlannedBudget) * 100).coerceAtMost(100.0).toFloat()
+              } else 0f
+
               Surface(
                 modifier = Modifier
                   .fillMaxWidth()
-                  .clip(RoundedCornerShape(16.dp))
-                  .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp)),
+                  .clip(RoundedCornerShape(12.dp))
+                  .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
                 color = Color.White.copy(alpha = 0.08f)
               ) {
-                Column(
+                Row(
                   modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
                 ) {
-                  Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                  ) {
-                    MetricSummaryItem(
-                      label = if (language == "bn") "সক্রিয় ইভেন্ট" else "Active Events",
-                      value = "${events.size}",
-                      icon = Icons.Default.Celebration
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = Icons.Default.Celebration,
+                      contentDescription = null,
+                      tint = AccentGold,
+                      modifier = Modifier.size(13.dp)
                     )
-                    Box(
-                      modifier = Modifier
-                        .width(1.dp)
-                        .height(28.dp)
-                        .background(Color.White.copy(alpha = 0.15f))
-                    )
-                    MetricSummaryItem(
-                      label = if (language == "bn") "নিশ্চিত অতিথি" else "Total RSVPs",
-                      value = "$totalConfirmedRSVPs",
-                      icon = Icons.Default.People
-                    )
-                    Box(
-                      modifier = Modifier
-                        .width(1.dp)
-                        .height(28.dp)
-                        .background(Color.White.copy(alpha = 0.15f))
-                    )
-                    MetricSummaryItem(
-                      label = AppStrings.get("total_budget", language),
-                      value = formatCompactAmount(totalPlannedBudget),
-                      icon = Icons.Default.AccountBalanceWallet
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = "${events.size} ${if (language == "bn") "ইভেন্ট" else "Events"}",
+                      style = MaterialTheme.typography.labelMedium,
+                      fontWeight = FontWeight.Bold,
+                      color = Color.White
                     )
                   }
 
-                  Spacer(modifier = Modifier.height(12.dp))
-
-                  // Dedicated Spent vs Budget Health Indicator
-                  val budgetPercentage = if (totalPlannedBudget > 0) {
-                    ((totalSpentAllEvents / totalPlannedBudget) * 100).coerceAtMost(100.0).toFloat()
-                  } else 0f
-                  val progressFraction = if (totalPlannedBudget > 0) {
-                    (totalSpentAllEvents / totalPlannedBudget).coerceIn(0.0, 1.0).toFloat()
-                  } else 0f
-
-                  Column(
+                  Box(
                     modifier = Modifier
-                      .fillMaxWidth()
-                      .clip(RoundedCornerShape(10.dp))
-                      .background(Color.Black.copy(alpha = 0.2f))
-                      .padding(horizontal = 12.dp, vertical = 8.dp)
-                  ) {
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.SpaceBetween,
-                      verticalAlignment = Alignment.CenterVertically
-                    ) {
-                      Text(
-                        text = "${AppStrings.get("total_spent", language)}: ${formatCompactAmount(totalSpentAllEvents)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                      )
-                      Text(
-                        text = "${budgetPercentage.toInt()}% ${if (language == "bn") "ব্যবহৃত" else "used"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (budgetPercentage > 90f) Color(0xFFFF8A80) else AccentGold
-                      )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                      progress = { progressFraction },
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                      color = if (budgetPercentage > 90f) Color(0xFFFF6E6E) else AccentGold,
-                      trackColor = Color.White.copy(alpha = 0.2f),
+                      .width(1.dp)
+                      .height(16.dp)
+                      .background(Color.White.copy(alpha = 0.2f))
+                  )
+
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = Icons.Default.People,
+                      contentDescription = null,
+                      tint = AccentGold,
+                      modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = "$totalConfirmedRSVPs ${if (language == "bn") "অতিথি" else "RSVPs"}",
+                      style = MaterialTheme.typography.labelMedium,
+                      fontWeight = FontWeight.Bold,
+                      color = Color.White
+                    )
+                  }
+
+                  Box(
+                    modifier = Modifier
+                      .width(1.dp)
+                      .height(16.dp)
+                      .background(Color.White.copy(alpha = 0.2f))
+                  )
+
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = Icons.Default.AccountBalanceWallet,
+                      contentDescription = null,
+                      tint = AccentGold,
+                      modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = "${formatCompactAmount(totalSpentAllEvents)} / ${formatCompactAmount(totalPlannedBudget)}",
+                      style = MaterialTheme.typography.labelMedium,
+                      fontWeight = FontWeight.Bold,
+                      color = if (budgetPercentage > 90f) Color(0xFFFF8A80) else AccentGoldLight
                     )
                   }
                 }
               }
 
-              Spacer(modifier = Modifier.height(18.dp))
+              Spacer(modifier = Modifier.height(10.dp))
 
-              // Spotlight Event Card inside Hero
+              // Compact Spotlight Event Card or Ultra-Sleek Empty Banner
               if (spotlightEvent != null) {
                 // Multi-event switcher pills if more than 1 event exists
                 if (events.size > 1) {
                   LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                   ) {
                     items(events, key = { it.id }) { ev ->
                       val isSelected = ev.id == spotlightEvent.id
                       Surface(
                         modifier = Modifier
-                          .clip(RoundedCornerShape(20.dp))
+                          .clip(RoundedCornerShape(16.dp))
                           .clickable { spotlightEventId = ev.id },
                         color = if (isSelected) AccentGold else Color.White.copy(alpha = 0.15f)
                       ) {
@@ -344,19 +333,23 @@ fun DashboardScreen(
                           fontSize = 11.sp,
                           fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                           maxLines = 1,
-                          modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                          modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                       }
                     }
                   }
-                  Spacer(modifier = Modifier.height(10.dp))
+                  Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 Surface(
                   modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(
+                      1.5.dp,
+                      if (!spotlightEvent.coverPhotoUri.isNullOrBlank()) AccentGold.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f),
+                      RoundedCornerShape(16.dp)
+                    )
                     .clickable { onEventClick(spotlightEvent.id) }
                     .testTag("dashboard_next_event_card"),
                   color = Color.White.copy(alpha = 0.12f)
@@ -372,279 +365,244 @@ fun DashboardScreen(
                       Box(
                         modifier = Modifier
                           .matchParentSize()
-                          .background(Color.Black.copy(alpha = 0.65f))
+                          .background(
+                            brush = Brush.verticalGradient(
+                              colors = listOf(
+                                Color.Black.copy(alpha = 0.50f),
+                                Color.Black.copy(alpha = 0.85f)
+                              )
+                            )
+                          )
                       )
                     }
 
-                    Column(modifier = Modifier.padding(18.dp)) {
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.SpaceBetween,
-                      verticalAlignment = Alignment.Top
-                    ) {
-                      Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                          text = spotlightEvent.category.uppercase(),
-                          style = MaterialTheme.typography.labelSmall,
-                          fontWeight = FontWeight.Bold,
-                          color = AccentGold,
-                          letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                          text = spotlightEvent.title,
-                          style = MaterialTheme.typography.titleLarge,
-                          fontFamily = FontFamily.Serif,
-                          fontWeight = FontWeight.Bold,
-                          color = Color.White,
-                          maxLines = 2,
-                          overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                          Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = AccentGoldLight,
-                            modifier = Modifier.size(14.dp)
-                          )
-                          Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.padding(12.dp)) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                          Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                              shape = RoundedCornerShape(4.dp),
+                              color = AccentGold.copy(alpha = 0.25f)
+                            ) {
+                              Text(
+                                text = spotlightEvent.category.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentGold,
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                              )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                              text = "${spotlightEvent.location} • ${spotlightEvent.dateFormatted}",
+                              style = MaterialTheme.typography.labelSmall,
+                              color = Color.White.copy(alpha = 0.90f),
+                              maxLines = 1,
+                              overflow = TextOverflow.Ellipsis
+                            )
+                          }
+                          Spacer(modifier = Modifier.height(3.dp))
                           Text(
-                            text = "${spotlightEvent.location} • ${spotlightEvent.dateFormatted}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.85f),
+                            text = spotlightEvent.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                           )
                         }
-                      }
 
-                      Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                      // Gold Circular Countdown Badge
-                      Box(
-                        modifier = Modifier
-                          .size(60.dp)
-                          .clip(CircleShape)
-                          .background(AccentGold)
-                          .border(2.dp, AccentGoldLight, CircleShape),
-                        contentAlignment = Alignment.Center
-                      ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                          if (isToday) {
+                        // Compact Gold Countdown Badge
+                        Surface(
+                          shape = RoundedCornerShape(10.dp),
+                          color = AccentGold
+                        ) {
+                          Box(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                          ) {
                             Text(
-                              text = if (language == "bn") "আজ" else "TODAY",
-                              style = MaterialTheme.typography.labelSmall,
-                              fontWeight = FontWeight.Bold,
-                              color = PlumDark,
-                              fontSize = 12.sp
-                            )
-                          } else if (isPast) {
-                            Text(
-                              text = AppStrings.get("passed", language),
+                              text = if (isToday) (if (language == "bn") "আজ" else "TODAY")
+                                     else if (isPast) AppStrings.get("passed", language)
+                                     else "$daysLeft ${if (language == "bn") "দিন" else "Days"}",
                               style = MaterialTheme.typography.labelSmall,
                               fontWeight = FontWeight.Bold,
                               color = PlumDark,
                               fontSize = 11.sp
                             )
-                          } else {
-                            Text(
-                              text = "$daysLeft",
-                              style = MaterialTheme.typography.titleMedium,
-                              fontWeight = FontWeight.Bold,
-                              color = PlumDark,
-                              lineHeight = 16.sp
+                          }
+                        }
+                      }
+
+                      Spacer(modifier = Modifier.height(8.dp))
+
+                      // Quick action row
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Surface(
+                          modifier = Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onAddGuestClick(spotlightEvent.id) }
+                            .testTag("spotlight_add_guest_btn"),
+                          color = Color.White.copy(alpha = 0.22f)
+                        ) {
+                          Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                          ) {
+                            Icon(
+                              imageVector = Icons.Default.GroupAdd,
+                              contentDescription = "Guest",
+                              tint = Color.White,
+                              modifier = Modifier.size(14.dp)
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                              text = if (daysLeft == 1L) {
-                                if (language == "bn") "দিন" else "Day"
-                              } else {
-                                AppStrings.get("days", language)
-                              },
+                              text = if (language == "bn") "অতিথি" else "Guest",
                               style = MaterialTheme.typography.labelSmall,
-                              fontWeight = FontWeight.SemiBold,
-                              color = PlumDark,
-                              fontSize = 9.sp
+                              fontWeight = FontWeight.Bold,
+                              color = Color.White
+                            )
+                          }
+                        }
+
+                        Surface(
+                          modifier = Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onChecklistClick(spotlightEvent.id) }
+                            .testTag("spotlight_checklist_btn"),
+                          color = AccentGold.copy(alpha = 0.30f)
+                        ) {
+                          Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                          ) {
+                            Icon(
+                              imageVector = Icons.Default.Checklist,
+                              contentDescription = "Checklist",
+                              tint = AccentGoldLight,
+                              modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                              text = if (language == "bn") "চেকলিস্ট" else "Checklist",
+                              style = MaterialTheme.typography.labelSmall,
+                              fontWeight = FontWeight.Bold,
+                              color = Color.White
+                            )
+                          }
+                        }
+
+                        Surface(
+                          modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, DangerRed.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            .clickable { eventToDelete = spotlightEvent }
+                            .testTag("spotlight_delete_event_btn"),
+                          color = DangerRed.copy(alpha = 0.30f)
+                        ) {
+                          Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                          ) {
+                            Icon(
+                              imageVector = Icons.Default.Delete,
+                              contentDescription = "Delete Event",
+                              tint = Color.White,
+                              modifier = Modifier.size(15.dp)
                             )
                           }
                         }
                       }
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Guest confirmation progress bar
-                    val guestProgress = if (totalGuestCount > 0) {
-                      confirmedCount.toFloat() / totalGuestCount.toFloat()
-                    } else 0f
-
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                      Text(
-                        text = "Guest RSVPs",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.8f)
-                      )
-                      Text(
-                        text = "$confirmedCount confirmed / $totalGuestCount total",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AccentGoldLight
-                      )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    LinearProgressIndicator(
-                      progress = { if (totalGuestCount > 0) guestProgress else 0.4f },
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                      color = AccentGold,
-                      trackColor = Color.White.copy(alpha = 0.2f),
-                      strokeCap = StrokeCap.Round
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Spotlight Action Buttons: Guest, Checklist, and Delete Icon (on the right of Checklist)
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      verticalAlignment = Alignment.CenterVertically
-                    ) {
-                      // Add Guest
-                      Surface(
-                        modifier = Modifier
-                          .weight(1f)
-                          .clip(RoundedCornerShape(16.dp))
-                          .clickable { onAddGuestClick(spotlightEvent.id) }
-                          .testTag("spotlight_add_guest_btn"),
-                        color = Color.White.copy(alpha = 0.18f)
-                      ) {
-                        Row(
-                          modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                          verticalAlignment = Alignment.CenterVertically,
-                          horizontalArrangement = Arrangement.Center
-                        ) {
-                          Icon(
-                            imageVector = Icons.Default.GroupAdd,
-                            contentDescription = "Add Guest",
-                            tint = Color.White,
-                            modifier = Modifier.size(15.dp)
-                          )
-                          Spacer(modifier = Modifier.width(4.dp))
-                          Text(
-                            text = if (language == "bn") "অতিথি" else "Guest",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                          )
-                        }
-                      }
-
-                      // Checklist
-                      Surface(
-                        modifier = Modifier
-                          .weight(1f)
-                          .clip(RoundedCornerShape(16.dp))
-                          .clickable { onChecklistClick(spotlightEvent.id) }
-                          .testTag("spotlight_checklist_btn"),
-                        color = AccentGold.copy(alpha = 0.25f)
-                      ) {
-                        Row(
-                          modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                          verticalAlignment = Alignment.CenterVertically,
-                          horizontalArrangement = Arrangement.Center
-                        ) {
-                          Icon(
-                            imageVector = Icons.Default.Checklist,
-                            contentDescription = "Checklist",
-                            tint = AccentGoldLight,
-                            modifier = Modifier.size(15.dp)
-                          )
-                          Spacer(modifier = Modifier.width(4.dp))
-                          Text(
-                            text = if (language == "bn") "চেকলিস্ট" else "Checklist",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                          )
-                        }
-                      }
-
-                      // Delete Icon right on the right side of Checklist
-                      Surface(
-                        modifier = Modifier
-                          .size(36.dp)
-                          .clip(CircleShape)
-                          .border(1.dp, DangerRed.copy(alpha = 0.6f), CircleShape)
-                          .clickable { eventToDelete = spotlightEvent }
-                          .testTag("spotlight_delete_event_btn"),
-                        color = DangerRed.copy(alpha = 0.25f)
-                      ) {
-                        Box(
-                          contentAlignment = Alignment.Center,
-                          modifier = Modifier.fillMaxSize()
-                        ) {
-                          Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Event",
-                            tint = Color.White,
-                            modifier = Modifier.size(17.dp)
-                          )
-                        }
-                      }
-                    }
                   }
                 }
-              }
               } else {
-                // Empty State Banner for New Users
+                // Premium, Inviting Empty State Hero Card ("Start Planning Your Event")
                 Surface(
                   modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .border(1.dp, AccentGold.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .clickable { onNewEventClick() },
-                  color = Color.White.copy(alpha = 0.1f)
-                ) {
-                  Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                  ) {
-                    Box(
-                      modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(AccentGold.copy(alpha = 0.2f)),
-                      contentAlignment = Alignment.Center
-                    ) {
-                      Icon(
-                        imageVector = Icons.Default.Celebration,
-                        contentDescription = null,
-                        tint = AccentGold,
-                        modifier = Modifier.size(24.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                      brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        colors = listOf(
+                          Color.White.copy(alpha = 0.16f),
+                          Color.White.copy(alpha = 0.08f)
+                        )
                       )
+                    )
+                    .border(1.5.dp, AccentGold.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                    .clickable { onNewEventClick() }
+                    .testTag("dashboard_empty_create_event_hero"),
+                  color = Color.Transparent
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                  ) {
+                    Row(
+                      modifier = Modifier.weight(1f),
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Box(
+                        modifier = Modifier
+                          .size(40.dp)
+                          .clip(CircleShape)
+                          .background(
+                            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                              colors = listOf(AccentGold.copy(alpha = 0.35f), AccentGold.copy(alpha = 0.15f))
+                            )
+                          )
+                          .border(1.dp, AccentGold.copy(alpha = 0.5f), CircleShape),
+                        contentAlignment = Alignment.Center
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Celebration,
+                          contentDescription = null,
+                          tint = AccentGold,
+                          modifier = Modifier.size(20.dp)
+                        )
+                      }
+                      Spacer(modifier = Modifier.width(10.dp))
+                      Column {
+                        Text(
+                          text = if (language == "bn") "আপনার ইভেন্ট পরিকল্পনা শুরু করুন" else "Start Planning Your Event",
+                          style = MaterialTheme.typography.titleMedium,
+                          fontWeight = FontWeight.Bold,
+                          color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                          text = if (language == "bn") "বিয়ে, জন্মদিন বা অনুষ্ঠান সহজ প্ল্যানিং 🚀" else "Wedding, birthday or party in 1 min 🚀",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = Color.White.copy(alpha = 0.9f),
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                        )
+                      }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                      text = if (language == "bn") "আপনার ইভেন্ট পরিকল্পনা শুরু করুন" else "Start Planning Your Event",
-                      style = MaterialTheme.typography.titleMedium,
-                      fontWeight = FontWeight.Bold,
-                      color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                      text = if (language == "bn") "বিয়ে, জন্মদিন বা কোনো অনুষ্ঠানের আয়োজন করুন সহজে।" else "Create your wedding, birthday, or party in 1 minute.",
-                      style = MaterialTheme.typography.bodySmall,
-                      color = Color.White.copy(alpha = 0.85f),
-                      textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Button(
                       onClick = onNewEventClick,
                       shape = RoundedCornerShape(12.dp),
@@ -652,26 +610,29 @@ fun DashboardScreen(
                         containerColor = AccentGold,
                         contentColor = PlumDark
                       ),
-                      modifier = Modifier.testTag("dashboard_empty_create_event_cta")
+                      contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                      modifier = Modifier
+                        .height(36.dp)
+                        .testTag("dashboard_empty_create_event_cta")
                     ) {
-                      Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                      Spacer(modifier = Modifier.width(6.dp))
+                      Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                      Spacer(modifier = Modifier.width(3.dp))
                       Text(
-                        text = if (language == "bn") "নতুন ইভেন্ট যোগ করুন" else "Create New Event",
+                        text = if (language == "bn") "নতুন" else "Create",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontSize = 12.sp
                       )
                     }
                   }
                 }
               }
 
-              Spacer(modifier = Modifier.height(20.dp))
+              Spacer(modifier = Modifier.height(10.dp))
 
-              // Three Quick-Action Tiles Side by Side
+              // Three Compact Quick-Action Tiles
               Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
               ) {
                 QuickActionTile(
                   title = AppStrings.get("new_event", language),
@@ -1129,7 +1090,7 @@ fun DashboardScreen(
           }
         } else {
           items(filteredEvents, key = { it.id }) { event ->
-            val eventExpenses = expenses.filter { it.eventId == event.id }
+            val eventExpenses = expensesByEventId[event.id] ?: emptyList()
             val totalSpent = eventExpenses.sumOf { it.amount }
 
             Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -1294,24 +1255,24 @@ fun QuickActionTile(
 ) {
   Surface(
     modifier = modifier
-      .clip(RoundedCornerShape(16.dp))
+      .clip(RoundedCornerShape(12.dp))
       .border(
         width = if (isSelected) 1.5.dp else 1.dp,
         color = if (isSelected) AccentGold else Color.White.copy(alpha = 0.15f),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
       )
       .clickable { onClick() }
       .testTag(testTag),
     color = if (isSelected) AccentGold.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f)
   ) {
-    Column(
-      modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center
+    Row(
+      modifier = Modifier.padding(vertical = 7.dp, horizontal = 6.dp),
+      horizontalArrangement = Arrangement.Center,
+      verticalAlignment = Alignment.CenterVertically
     ) {
       Box(
         modifier = Modifier
-          .size(40.dp)
+          .size(26.dp)
           .clip(CircleShape)
           .background(if (isSelected) AccentGold else AccentGold.copy(alpha = 0.22f)),
         contentAlignment = Alignment.Center
@@ -1320,16 +1281,16 @@ fun QuickActionTile(
           imageVector = icon,
           contentDescription = title,
           tint = if (isSelected) PlumDark else AccentGold,
-          modifier = Modifier.size(20.dp)
+          modifier = Modifier.size(14.dp)
         )
       }
-      Spacer(modifier = Modifier.height(6.dp))
+      Spacer(modifier = Modifier.width(5.dp))
       Text(
         text = title,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
         color = if (isSelected) AccentGold else Color.White,
-        textAlign = TextAlign.Center,
+        fontSize = 11.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
       )

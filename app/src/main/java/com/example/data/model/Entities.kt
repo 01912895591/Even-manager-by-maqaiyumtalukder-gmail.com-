@@ -54,7 +54,8 @@ data class ChecklistItemEntity(
   val eventId: Long,
   val title: String,
   val dueDate: String = "",
-  val isDone: Boolean = false
+  val isDone: Boolean = false,
+  val category: String = "General"
 )
 
 @Entity(
@@ -139,7 +140,8 @@ data class EventContactCrossRef(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,
   val eventId: Long,
   val contactId: Long,
-  val status: String = "Not Called" // Not Called, Called, Confirmed, Declined
+  val status: String = "Not Called", // Not Called, Called, Confirmed, Declined
+  val isInviteSent: Boolean = false
 )
 
 @Entity(tableName = "app_settings")

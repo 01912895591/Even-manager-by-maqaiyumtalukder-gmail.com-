@@ -173,6 +173,10 @@ class EventRepository(private val db: AppDatabase) {
     db.eventContactDao().updateGuestStatus(eventId, contactId, status)
   }
 
+  suspend fun markInviteSent(eventId: Long, contactId: Long, isSent: Boolean = true) = withContext(Dispatchers.IO) {
+    db.eventContactDao().updateInviteSentStatus(eventId, contactId, isSent)
+  }
+
   suspend fun removeGuestFromEvent(eventId: Long, contactId: Long) = withContext(Dispatchers.IO) {
     db.eventContactDao().deleteByEventAndContact(eventId, contactId)
   }

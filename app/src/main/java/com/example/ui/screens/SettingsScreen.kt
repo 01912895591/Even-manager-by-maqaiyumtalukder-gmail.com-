@@ -65,6 +65,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.data.AppDatabase
+import com.example.data.util.BackupRestoreManager
+import kotlinx.coroutines.launch
 import com.example.data.model.AppSettingsEntity
 import com.example.data.model.UserEntity
 import com.example.ui.components.InitialsAvatar
@@ -82,6 +94,7 @@ import com.example.ui.util.AppStrings
 fun SettingsScreen(
   currentUser: UserEntity?,
   settings: AppSettingsEntity,
+  appDatabase: AppDatabase? = null,
   onUpdateLanguage: (String) -> Unit,
   onToggleDarkMode: (Boolean) -> Unit,
   onUpdateCurrency: (String) -> Unit,
@@ -95,6 +108,51 @@ fun SettingsScreen(
   var showEditProfileDialog by remember { mutableStateOf(false) }
   var editName by remember(currentUser) { mutableStateOf(currentUser?.name ?: "Event Planner") }
   var editEmail by remember(currentUser) { mutableStateOf(currentUser?.email ?: "") }
+
+  // Backup & Restore State
+  val context = LocalContext.current
+  val coroutineScope = rememberCoroutineScope()
+  var isBackingUp by remember { mutableStateOf(false) }
+  var isRestoring by remember { mutableStateOf(false) }
+  var backupMessage by remember { mutableStateOf<String?>(null) }
+  var restoreMessage by remember { mutableStateOf<String?>(null) }
+  var showRestoreConfirmDialog by remember { mutableStateOf(false) }
+  var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
+  // Launcher to Export / Save Backup File (JSON)
+  val exportBackupLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.CreateDocument("application/json")
+  ) { uri ->
+    if (uri != null && appDatabase != null) {
+      coroutineScope.launch {
+        isBackingUp = true
+        try {
+          val json = BackupRestoreManager.exportDataToJson(appDatabase)
+          val success = BackupRestoreManager.writeBackupToUri(context, uri, json)
+          if (success) {
+            backupMessage = if (settings.language == "bn") "ব্যাকআপ ফাইল সফলভাবে সেভ করা হয়েছে! (গুগল ড্রাইভ বা মেমরিতে রাখতে পারেন)" else "Backup file exported successfully! You can store it in Google Drive or device storage."
+          } else {
+            backupMessage = if (settings.language == "bn") "ব্যাকআপ তৈরিতে সমস্যা হয়েছে।" else "Failed to write backup file."
+          }
+        } catch (e: Exception) {
+          backupMessage = "Error: ${e.message}"
+        } finally {
+          isBackingUp = false
+        }
+      }
+    }
+  }
+
+  // Launcher to Import / Restore Backup File (JSON)
+  val importBackupLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocument()
+  ) { uri ->
+    if (uri != null) {
+      pendingRestoreUri = uri
+      showRestoreConfirmDialog = true
+    }
+  }
+
   val currencies = listOf("৳", "$", "€", "£", "₹", "SAR", "AED")
   val accentColors = listOf(
     "#D4AF6A" to "Royal Gold",
@@ -407,6 +465,89 @@ fun SettingsScreen(
                 )
               }
             }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // OFFLINE DATA SAFETY: Local Backup & Restore Action Buttons
+            Text(
+              text = if (settings.language == "bn") "অফলাইন ডাটা সেফটি (ব্যাকআপ ও রিস্টোর)" else "Offline Data Safety (Backup & Restore)",
+              style = MaterialTheme.typography.labelLarge,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+              // Backup Data (Download File) Button
+              Button(
+                onClick = {
+                  val dateStr = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+                  val fileName = "EventPlanner_Backup_$dateStr.json"
+                  exportBackupLauncher.launch(fileName)
+                },
+                modifier = Modifier
+                  .weight(1f)
+                  .testTag("backup_data_button"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = DeepPlum,
+                  contentColor = Color.White
+                ),
+                enabled = !isBackingUp && !isRestoring
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Download,
+                  contentDescription = null,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = if (settings.language == "bn") "Backup (Download)" else "Backup Data",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+
+              // Restore Data Button
+              OutlinedButton(
+                onClick = {
+                  importBackupLauncher.launch(arrayOf("application/json", "*/*"))
+                },
+                modifier = Modifier
+                  .weight(1f)
+                  .testTag("restore_data_button"),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepPlum),
+                colors = ButtonDefaults.outlinedButtonColors(
+                  contentColor = DeepPlum
+                ),
+                enabled = !isBackingUp && !isRestoring
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Restore,
+                  contentDescription = null,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = if (settings.language == "bn") "Restore Data" else "Restore Data",
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+            }
+
+            Text(
+              text = if (settings.language == "bn")
+                "💡 ফোন পরিবর্তন বা সুরক্ষার জন্য ব্যাকআপ ফাইলটি গুগল ড্রাইভ অথবা মেমরিতে সেভ করে রাখতে পারেন।"
+              else
+                "💡 Save your backup JSON file to Google Drive or SD card to restore anytime.",
+              style = MaterialTheme.typography.bodySmall,
+              color = TextMuted,
+              fontSize = 11.sp
+            )
           }
         }
       }
@@ -707,5 +848,117 @@ fun SettingsScreen(
 
       Spacer(modifier = Modifier.height(60.dp))
     }
+  }
+
+  // Restore Confirmation Dialog
+  if (showRestoreConfirmDialog && pendingRestoreUri != null) {
+    val targetUri = pendingRestoreUri!!
+    AlertDialog(
+      onDismissRequest = {
+        showRestoreConfirmDialog = false
+        pendingRestoreUri = null
+      },
+      title = {
+        Text(
+          text = if (settings.language == "bn") "ডেটা রিস্টোর নিশ্চিতকরণ" else "Confirm Data Restore",
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Text(
+          text = if (settings.language == "bn")
+            "আপনি কি ব্যাকআপ ফাইলটি থেকে ডেটা রিস্টোর করতে চান? পূর্বের বিদ্যমান ডেটার সাথে ব্যাকআপ ডেটা মার্জ ও রিস্টোর হবে।"
+          else
+            "Are you sure you want to restore data from this backup file? Your events, contacts, guests, and budgets will be restored."
+        )
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            showRestoreConfirmDialog = false
+            if (appDatabase != null) {
+              coroutineScope.launch {
+                isRestoring = true
+                try {
+                  val (success, summary) = BackupRestoreManager.restoreDataFromUri(context, appDatabase, targetUri)
+                  if (success && summary != null) {
+                    restoreMessage = if (settings.language == "bn")
+                      "সফলভাবে রিস্টোর হয়েছে!\n• ইভেন্ট: ${summary.eventsCount}টি\n• কন্ট্যাক্ট: ${summary.contactsCount}টি\n• খরচ এন্ট্রি: ${summary.expensesCount}টি\n• চেকলিস্ট: ${summary.checklistCount}টি"
+                    else
+                      "Data Restored Successfully!\n• Events: ${summary.eventsCount}\n• Contacts: ${summary.contactsCount}\n• Expenses: ${summary.expensesCount}\n• Checklist: ${summary.checklistCount}"
+                  } else {
+                    restoreMessage = if (settings.language == "bn") "রিস্টোর ব্যর্থ হয়েছে। ফাইলটি সঠিক ব্যাকআপ ফাইল নয়।" else "Failed to restore. Invalid backup file format."
+                  }
+                } catch (e: Exception) {
+                  restoreMessage = "Restore Error: ${e.message}"
+                } finally {
+                  isRestoring = false
+                  pendingRestoreUri = null
+                }
+              }
+            }
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+        ) {
+          Text("Confirm Restore")
+        }
+      },
+      dismissButton = {
+        OutlinedButton(onClick = {
+          showRestoreConfirmDialog = false
+          pendingRestoreUri = null
+        }) {
+          Text("Cancel")
+        }
+      }
+    )
+  }
+
+  // Backup Success / Error Dialog
+  if (backupMessage != null) {
+    AlertDialog(
+      onDismissRequest = { backupMessage = null },
+      title = {
+        Text(
+          text = if (settings.language == "bn") "ব্যাকআপ স্ট্যাটাস" else "Backup Status",
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Text(text = backupMessage ?: "")
+      },
+      confirmButton = {
+        Button(
+          onClick = { backupMessage = null },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+        ) {
+          Text("OK")
+        }
+      }
+    )
+  }
+
+  // Restore Result Dialog
+  if (restoreMessage != null) {
+    AlertDialog(
+      onDismissRequest = { restoreMessage = null },
+      title = {
+        Text(
+          text = if (settings.language == "bn") "রিস্টোর ফলাফল" else "Restore Result",
+          fontWeight = FontWeight.Bold
+        )
+      },
+      text = {
+        Text(text = restoreMessage ?: "")
+      },
+      confirmButton = {
+        Button(
+          onClick = { restoreMessage = null },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum)
+        ) {
+          Text("OK")
+        }
+      }
+    )
   }
 }

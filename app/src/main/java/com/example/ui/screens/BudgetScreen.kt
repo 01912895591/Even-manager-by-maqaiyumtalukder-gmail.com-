@@ -32,10 +32,13 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.ui.components.BudgetProgressRing
+import com.example.ui.components.CategoryExpensePieChart
 import com.example.ui.components.CategoryProgressRow
 import com.example.ui.components.getCategoryColor
 import com.example.ui.components.getCategoryIcon
@@ -116,10 +120,13 @@ fun BudgetScreen(
   onAddExpense: (name: String, category: String, amount: Double, status: String, due: Double, advancePaid: Double, dueDate: Long?) -> Unit,
   onDeleteExpense: (ExpenseEntity) -> Unit,
   onUpdateExpense: (ExpenseEntity) -> Unit = {},
+  onUpdatePlannedBudget: (Double) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
   var showAddExpenseDialog by remember { mutableStateOf(false) }
+  var showEditBudgetDialog by remember { mutableStateOf(false) }
+  var editedBudgetText by remember { mutableStateOf("") }
 
   val headerBg = if (event != null) getCategoryColor(event.category) else PlumDark
 
@@ -426,13 +433,33 @@ fun BudgetScreen(
               modifier = Modifier.weight(1f),
               verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-              // Planned
-              Column {
-                Text(
-                  text = AppStrings.get("planned", language),
-                  style = MaterialTheme.typography.labelSmall,
-                  color = TextMuted
-                )
+              // Planned (with Edit action)
+              Column(
+                modifier = Modifier
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable {
+                    editedBudgetText = if (budgetSummary.planned > 0) budgetSummary.planned.toLong().toString() else ""
+                    showEditBudgetDialog = true
+                  }
+                  .padding(vertical = 2.dp)
+                  .testTag("budget_edit_planned_budget_button")
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                  Text(
+                    text = AppStrings.get("planned", language),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
+                  )
+                  Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit Planned Budget",
+                    tint = AccentGold,
+                    modifier = Modifier.size(13.dp)
+                  )
+                }
                 Text(
                   text = formatCurrency(budgetSummary.planned, currencySymbol),
                   style = MaterialTheme.typography.titleMedium,
@@ -456,18 +483,88 @@ fun BudgetScreen(
                 )
               }
 
-              // Remaining
+              // Remaining / Overspent
               Column {
+                val isOverBudget = budgetSummary.spent > budgetSummary.planned && budgetSummary.planned > 0
                 Text(
-                  text = AppStrings.get("remaining", language),
+                  text = if (isOverBudget) {
+                    if (language == "bn") "বাজেট অতিক্রম" else "Over Budget"
+                  } else {
+                    AppStrings.get("remaining", language)
+                  },
                   style = MaterialTheme.typography.labelSmall,
-                  color = TextMuted
+                  color = if (isOverBudget) DangerRed else TextMuted,
+                  fontWeight = if (isOverBudget) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
-                  text = formatCurrency(budgetSummary.remaining, currencySymbol),
+                  text = if (isOverBudget) {
+                    val overspentAmt = budgetSummary.spent - budgetSummary.planned
+                    "- ${formatCurrency(overspentAmt, currencySymbol)}"
+                  } else {
+                    formatCurrency(budgetSummary.remaining, currencySymbol)
+                  },
                   style = MaterialTheme.typography.titleMedium,
                   fontWeight = FontWeight.Bold,
-                  color = SuccessGreen
+                  color = if (isOverBudget) DangerRed else SuccessGreen
+                )
+              }
+            }
+          }
+        }
+
+        // Budget Overspend Warning Banner (যদি খরচ বাজেট অতিক্রম করে)
+        val isOverBudget = budgetSummary.spent > budgetSummary.planned && budgetSummary.planned > 0
+        if (isOverBudget) {
+          val overspentAmount = budgetSummary.spent - budgetSummary.planned
+          val formattedOverspent = formatCurrency(overspentAmount, currencySymbol)
+          Spacer(modifier = Modifier.height(12.dp))
+          Surface(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(14.dp))
+              .border(1.5.dp, DangerRed.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
+              .testTag("budget_overspend_warning_banner"),
+            color = DangerRed.copy(alpha = 0.10f)
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Surface(
+                shape = CircleShape,
+                color = DangerRed,
+                modifier = Modifier.size(38.dp)
+              ) {
+                Box(contentAlignment = Alignment.Center) {
+                  Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Warning",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                  )
+                }
+              }
+
+              Spacer(modifier = Modifier.width(12.dp))
+
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = if (language == "bn") "বাজেট সতর্কতা!" else "Budget Overspend Alert!",
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = DangerRed
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = if (language == "bn")
+                    "আপনি নির্ধারিত বাজেটের চেয়ে $formattedOverspent বেশি খরচ করেছেন!"
+                  else
+                    "You have exceeded your planned budget by $formattedOverspent!",
+                  style = MaterialTheme.typography.bodySmall,
+                  fontWeight = FontWeight.Medium,
+                  color = MaterialTheme.colorScheme.onSurface
                 )
               }
             }
@@ -475,11 +572,21 @@ fun BudgetScreen(
         }
       }
 
-      // 3. "Spending by category" Section
+      // 3. "Spending by category" Section with Pie Chart
       item {
         Spacer(modifier = Modifier.height(24.dp))
+        CategoryExpensePieChart(
+          categoryBreakdown = budgetSummary.categoryBreakdown,
+          totalSpent = budgetSummary.spent,
+          currencySymbol = currencySymbol,
+          language = language
+        )
+      }
+
+      item {
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
-          text = AppStrings.get("spending_by_category", language),
+          text = if (language == "bn") "ক্যাটাগরি ভিত্তিক খরচের তালিকা" else AppStrings.get("spending_by_category", language),
           style = MaterialTheme.typography.titleMedium,
           fontFamily = FontFamily.Serif,
           fontWeight = FontWeight.Bold,
@@ -499,7 +606,17 @@ fun BudgetScreen(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
           ) {
-            val colors = listOf(DeepPlum, AccentGold, Emerald, Rust, Color(0xFF285496), Color(0xFF8A307F))
+            val colors = listOf(
+              Color(0xFFE53935),
+              Color(0xFF8E24AA),
+              Color(0xFF1E88E5),
+              Color(0xFF43A047),
+              Color(0xFFFB8C00),
+              Color(0xFF00ACC1),
+              Color(0xFF6D4C41),
+              Color(0xFFD81B60),
+              Color(0xFF757575)
+            )
             budgetSummary.categoryBreakdown.forEachIndexed { index, item ->
               val color = colors[index % colors.size]
               CategoryProgressRow(
@@ -789,6 +906,43 @@ fun BudgetScreen(
                   fontWeight = FontWeight.Bold,
                   color = if (remDue > 0) WarningAmber else SuccessGreen
                 )
+              }
+            }
+
+            // Live Overspend Warning inside Dialog
+            val projectedSpent = budgetSummary.spent + totalAmt
+            if (budgetSummary.planned > 0 && projectedSpent > budgetSummary.planned) {
+              val overAmount = projectedSpent - budgetSummary.planned
+              val formattedOver = formatCurrency(overAmount, currencySymbol)
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = DangerRed.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                modifier = Modifier.testTag("dialog_overspend_warning")
+              ) {
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = DangerRed,
+                    modifier = Modifier.size(16.dp)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = if (language == "bn")
+                      "সতর্কতা: এই খরচটি যুক্ত করলে আপনি বাজেটের চেয়ে $formattedOver বেশি খরচ করবেন!"
+                    else
+                      "Warning: This expense will exceed your planned budget by $formattedOver!",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = DangerRed,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
               }
             }
           }
@@ -1176,6 +1330,89 @@ fun BudgetScreen(
       },
       dismissButton = {
         TextButton(onClick = { showAddExpenseDialog = false }) {
+          Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
+        }
+      }
+    )
+  }
+
+  // Edit Planned Budget Dialog
+  if (showEditBudgetDialog) {
+    var errorMsg by remember { mutableStateOf(false) }
+
+    AlertDialog(
+      onDismissRequest = { showEditBudgetDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Default.Payment, contentDescription = null, tint = AccentGold, modifier = Modifier.size(24.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = if (language == "bn") "পরিকল্পিত বাজেট পরিবর্তন" else "Edit Planned Budget",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+          )
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = if (language == "bn")
+              "এই ইভেন্টের জন্য আপনার মোট নির্ধারিত বাজেট লিখুন:"
+            else
+              "Set the total planned budget for this event:",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted
+          )
+
+          OutlinedTextField(
+            value = editedBudgetText,
+            onValueChange = {
+              editedBudgetText = it
+              errorMsg = false
+            },
+            label = { Text("${if (language == "bn") "বাজেটের পরিমাণ" else "Planned Budget"} ($currencySymbol)") },
+            placeholder = { Text("e.g. 50000") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            isError = errorMsg,
+            supportingText = {
+              if (errorMsg) {
+                Text(
+                  text = if (language == "bn") "সঠিক বাজেটের পরিমাণ লিখুন" else "Please enter a valid positive number",
+                  color = MaterialTheme.colorScheme.error
+                )
+              }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = DeepPlum,
+              focusedLabelColor = DeepPlum
+            ),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("input_edit_planned_budget")
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            val amount = editedBudgetText.toDoubleOrNull()
+            if (amount != null && amount >= 0) {
+              onUpdatePlannedBudget(amount)
+              showEditBudgetDialog = false
+            } else {
+              errorMsg = true
+            }
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
+          modifier = Modifier.testTag("confirm_save_planned_budget_button")
+        ) {
+          Text(if (language == "bn") "সংরক্ষণ করুন" else "Save Budget")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showEditBudgetDialog = false }) {
           Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
         }
       }

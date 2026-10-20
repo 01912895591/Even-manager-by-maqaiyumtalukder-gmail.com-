@@ -91,6 +91,8 @@ fun EventsListScreen(
     }
   }
 
+  val expensesByEventId = remember(expenses) { expenses.groupBy { it.eventId } }
+
   Box(
     modifier = modifier.fillMaxSize(),
     contentAlignment = Alignment.TopCenter
@@ -222,7 +224,7 @@ fun EventsListScreen(
           }
         } else {
           items(filteredEvents, key = { it.id }) { event ->
-            val eventExpenses = expenses.filter { it.eventId == event.id }
+            val eventExpenses = expensesByEventId[event.id] ?: emptyList()
             val totalSpent = eventExpenses.sumOf { it.amount }
 
             Box(modifier = Modifier.padding(vertical = 6.dp)) {

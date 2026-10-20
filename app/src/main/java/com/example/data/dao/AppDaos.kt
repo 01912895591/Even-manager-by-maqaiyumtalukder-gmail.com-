@@ -22,6 +22,9 @@ interface EventDao {
   @Query("SELECT * FROM events ORDER BY dateTimeMillis ASC")
   fun getAllEvents(): Flow<List<EventEntity>>
 
+  @Query("SELECT * FROM events")
+  suspend fun getAllEventsList(): List<EventEntity>
+
   @Query("SELECT * FROM events WHERE id = :id LIMIT 1")
   fun getEventById(id: Long): Flow<EventEntity?>
 
@@ -30,6 +33,9 @@ interface EventDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertEvent(event: EventEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertEvents(events: List<EventEntity>)
 
   @Update
   suspend fun updateEvent(event: EventEntity)
@@ -46,8 +52,14 @@ interface ChecklistDao {
   @Query("SELECT * FROM checklist_items WHERE eventId = :eventId ORDER BY id ASC")
   fun getItemsForEvent(eventId: Long): Flow<List<ChecklistItemEntity>>
 
+  @Query("SELECT * FROM checklist_items")
+  suspend fun getAllChecklistItemsList(): List<ChecklistItemEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertItem(item: ChecklistItemEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertItems(items: List<ChecklistItemEntity>)
 
   @Update
   suspend fun updateItem(item: ChecklistItemEntity)
@@ -67,8 +79,14 @@ interface ExpenseDao {
   @Query("SELECT * FROM expenses ORDER BY id DESC")
   fun getAllExpenses(): Flow<List<ExpenseEntity>>
 
+  @Query("SELECT * FROM expenses")
+  suspend fun getAllExpensesList(): List<ExpenseEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertExpense(expense: ExpenseEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertExpenses(expenses: List<ExpenseEntity>)
 
   @Update
   suspend fun updateExpense(expense: ExpenseEntity)
@@ -85,11 +103,17 @@ interface ContactDao {
   @Query("SELECT * FROM contacts ORDER BY name ASC")
   fun getAllContacts(): Flow<List<ContactEntity>>
 
+  @Query("SELECT * FROM contacts")
+  suspend fun getAllContactsList(): List<ContactEntity>
+
   @Query("SELECT * FROM contacts WHERE id = :id LIMIT 1")
   fun getContactById(id: Long): Flow<ContactEntity?>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertContact(contact: ContactEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertContacts(contacts: List<ContactEntity>)
 
   @Update
   suspend fun updateContact(contact: ContactEntity)
@@ -109,14 +133,23 @@ interface EventContactDao {
   @Query("SELECT * FROM event_contacts")
   fun getAllEventContacts(): Flow<List<EventContactCrossRef>>
 
+  @Query("SELECT * FROM event_contacts")
+  suspend fun getAllEventContactsList(): List<EventContactCrossRef>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertEventContact(ref: EventContactCrossRef): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertEventContacts(refs: List<EventContactCrossRef>)
 
   @Update
   suspend fun updateEventContact(ref: EventContactCrossRef)
 
   @Query("UPDATE event_contacts SET status = :status WHERE eventId = :eventId AND contactId = :contactId")
   suspend fun updateGuestStatus(eventId: Long, contactId: Long, status: String)
+
+  @Query("UPDATE event_contacts SET isInviteSent = :isSent WHERE eventId = :eventId AND contactId = :contactId")
+  suspend fun updateInviteSentStatus(eventId: Long, contactId: Long, isSent: Boolean)
 
   @Query("DELETE FROM event_contacts WHERE eventId = :eventId AND contactId = :contactId")
   suspend fun deleteByEventAndContact(eventId: Long, contactId: Long)
@@ -163,8 +196,14 @@ interface EventDayDao {
   @Query("SELECT * FROM event_days WHERE eventId = :eventId ORDER BY dateTimeMillis ASC, id ASC")
   fun getDaysForEvent(eventId: Long): Flow<List<EventDayEntity>>
 
+  @Query("SELECT * FROM event_days")
+  suspend fun getAllEventDaysList(): List<EventDayEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertEventDay(day: EventDayEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertEventDays(days: List<EventDayEntity>)
 
   @Update
   suspend fun updateEventDay(day: EventDayEntity)
@@ -184,8 +223,14 @@ interface CateringPlanDao {
   @Query("SELECT * FROM catering_plans WHERE eventId = :eventId LIMIT 1")
   suspend fun getCateringPlanOnce(eventId: Long): CateringPlanEntity?
 
+  @Query("SELECT * FROM catering_plans")
+  suspend fun getAllCateringPlansList(): List<CateringPlanEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertCateringPlan(plan: CateringPlanEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertCateringPlans(plans: List<CateringPlanEntity>)
 
   @Update
   suspend fun updateCateringPlan(plan: CateringPlanEntity)

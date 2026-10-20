@@ -220,11 +220,12 @@ fun NewEventScreen(
     CoverThemePreset("Imperial Plum", "#4A1030", "#2E0A1E", "Eid & Gala"),
     CoverThemePreset("Golden Amber", "#D4AF6A", "#99732B", "Birthday & Jubilee"),
     CoverThemePreset("Sapphire Blue", "#2E6B8E", "#1B435B", "Aqiqah & Family"),
+    CoverThemePreset("Corporate Navy", "#1B435B", "#0E2432", "Corporate & Seminar"),
     CoverThemePreset("Sunset Coral", "#C85A32", "#843214", "Anniversary"),
     CoverThemePreset("Modern Slate", "#4A4458", "#2E2A36", "Ceremony & Memorial")
   )
 
-  val categories = listOf("Wedding", "Eid", "Birthday", "Aqiqah", "Funeral", "Custom")
+  val categories = listOf("Wedding", "Birthday", "Aqiqah", "Corporate", "Eid", "Custom")
 
   Box(
     modifier = modifier
@@ -493,6 +494,46 @@ fun NewEventScreen(
         }
       }
 
+      // Smart Checklist Template Preview Notice
+      val templateTasksCount = when (selectedCategory.lowercase()) {
+        "wedding" -> 7
+        "birthday" -> 6
+        "aqiqah" -> 6
+        "corporate" -> 6
+        "eid" -> 5
+        else -> 4
+      }
+      Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = DeepPlum.copy(alpha = 0.08f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, DeepPlum.copy(alpha = 0.2f)),
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 10.dp)
+      ) {
+        Row(
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = null,
+            tint = DeepPlum,
+            modifier = Modifier.size(16.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = if (language == "bn")
+              "✨ স্মার্ট টেমপ্লেট: $selectedCategory এর জন্য স্বয়ংক্রিয় $templateTasksCount টি চেকলিস্ট যুক্ত হবে"
+            else
+              "✨ Smart Template: $templateTasksCount essential to-do tasks will be auto-created for $selectedCategory",
+            style = MaterialTheme.typography.labelSmall,
+            color = DeepPlum,
+            fontWeight = FontWeight.SemiBold
+          )
+        }
+      }
+
       Spacer(modifier = Modifier.height(18.dp))
 
       // Date & Time (Row of two OutlinedTextFields with interactive Calendar and Clock dialogs)
@@ -650,7 +691,10 @@ fun NewEventScreen(
 
     // Bottom Fixed Create Event Button
     Surface(
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier
+        .fillMaxWidth()
+        .navigationBarsPadding()
+        .imePadding(),
       color = MaterialTheme.colorScheme.surface,
       tonalElevation = 8.dp,
       border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
@@ -658,8 +702,6 @@ fun NewEventScreen(
       Box(
         modifier = Modifier
           .fillMaxWidth()
-          .navigationBarsPadding()
-          .imePadding()
           .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
       ) {

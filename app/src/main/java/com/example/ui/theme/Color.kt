@@ -28,6 +28,7 @@ val BorderSubtle = Color(0x1A000000)
 
 // Semantic Colors
 val SuccessGreen = Color(0xFF3FA66A)
+val WhatsAppGreen = Color(0xFF25D366)
 val WarningAmber = Color(0xFFE0A93A)
 val DangerRed = Color(0xFFD1495B)
 

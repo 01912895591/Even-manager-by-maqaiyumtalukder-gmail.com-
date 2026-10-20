@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    com.example.service.LocalEventReminderReceiver.createNotificationChannel(this)
     setContent {
       val eventViewModel: EventViewModel = viewModel()
       val settings by eventViewModel.settings.collectAsStateWithLifecycle()
@@ -442,8 +443,11 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onToggleChecklistItem = { item ->
             viewModel.toggleChecklistItem(item)
           },
-          onAddChecklistItem = { title, dueDate ->
-            viewModel.addChecklistItem(title, dueDate)
+          onAddChecklistItem = { title, dueDate, category ->
+            viewModel.addChecklistItem(title, dueDate, category)
+          },
+          onUpdateChecklistItem = { item ->
+            viewModel.updateChecklistItem(item)
           },
           onDeleteChecklistItem = { item ->
             viewModel.deleteChecklistItem(item)
@@ -451,6 +455,10 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onUpdateGuestStatus = { contactId, newStatus ->
             val eventId = selectedEvent?.id ?: return@EventDetailScreen
             viewModel.updateGuestStatus(eventId, contactId, newStatus)
+          },
+          onMarkInviteSent = { contactId ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.markInviteSent(eventId, contactId, true)
           },
           onNavigateToAddGuests = {
             navController.navigate(Routes.ADD_GUESTS)
@@ -498,6 +506,10 @@ fun EventManagerApp(viewModel: EventViewModel) {
           onAddCateringToBudget = { estimatedCost, recommendedPlates, perPlateCost, bufferPercent ->
             val eventId = selectedEvent?.id ?: return@EventDetailScreen
             viewModel.addOrUpdateCateringExpense(eventId, estimatedCost, recommendedPlates, perPlateCost, bufferPercent)
+          },
+          onUpdatePlannedBudget = { newBudget ->
+            val eventId = selectedEvent?.id ?: return@EventDetailScreen
+            viewModel.updatePlannedBudget(eventId, newBudget)
           }
         )
       }
@@ -617,6 +629,10 @@ fun EventManagerApp(viewModel: EventViewModel) {
           },
           onUpdateExpense = { exp ->
             viewModel.updateExpense(exp)
+          },
+          onUpdatePlannedBudget = { newBudget ->
+            val eventId = (selectedEvent ?: events.firstOrNull())?.id ?: return@BudgetScreen
+            viewModel.updatePlannedBudget(eventId, newBudget)
           }
         )
       }
@@ -651,6 +667,7 @@ fun EventManagerApp(viewModel: EventViewModel) {
         SettingsScreen(
           currentUser = currentUser,
           settings = settings,
+          appDatabase = viewModel.appDatabase,
           onBackClick = {
             val popped = navController.popBackStack(Routes.DASHBOARD, inclusive = false)
             if (!popped) {

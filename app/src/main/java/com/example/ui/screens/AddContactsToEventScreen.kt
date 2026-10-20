@@ -549,7 +549,10 @@ fun AddContactsToEventScreen(
 
     // Bottom Action Bar: Confirm Button
     Surface(
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier
+        .fillMaxWidth()
+        .navigationBarsPadding()
+        .imePadding(),
       color = MaterialTheme.colorScheme.surface,
       tonalElevation = 8.dp,
       border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
@@ -557,8 +560,6 @@ fun AddContactsToEventScreen(
       Box(
         modifier = Modifier
           .fillMaxWidth()
-          .navigationBarsPadding()
-          .imePadding()
           .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
       ) {

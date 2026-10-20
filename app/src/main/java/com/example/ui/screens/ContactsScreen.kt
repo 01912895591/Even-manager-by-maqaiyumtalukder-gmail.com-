@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -82,6 +84,8 @@ import androidx.core.content.ContextCompat
 import com.example.data.model.ContactEntity
 import com.example.data.model.EventContactCrossRef
 import com.example.ui.components.InitialsAvatar
+import com.example.ui.components.WhatsAppIconButton
+import com.example.ui.components.openWhatsAppMessage
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.DeepPlum
@@ -110,6 +114,7 @@ fun ContactsScreen(
   val context = LocalContext.current
   var showAddDialog by remember { mutableStateOf(false) }
   var contactToEdit by remember { mutableStateOf<ContactEntity?>(null) }
+  var contactToConvert by remember { mutableStateOf<ContactEntity?>(null) }
   var showPhoneContactsSheet by remember { mutableStateOf(false) }
 
   // Phone contacts state
@@ -429,11 +434,24 @@ fun ContactsScreen(
 
                   Spacer(modifier = Modifier.width(6.dp))
 
-                  // Action buttons (Call, Edit, Delete)
+                  // Action buttons (WhatsApp, Call, Edit, Delete)
                   Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                   ) {
+                    // 1-Click WhatsApp direct button
+                    WhatsAppIconButton(
+                      onClick = {
+                        val defaultMsg = if (language == "bn") {
+                          "আসসালামু আলাইকুম ${contact.name}! আশা করি ভালো আছেন।"
+                        } else {
+                          "Hello ${contact.name}! Hope you are doing well."
+                        }
+                        openWhatsAppMessage(context, contact.phone, defaultMsg)
+                      },
+                      size = 34.dp
+                    )
+
                     // Call button with distinct rounded shape
                     Surface(
                       shape = CircleShape,
@@ -512,32 +530,80 @@ fun ContactsScreen(
                 Row(
                   modifier = Modifier.fillMaxWidth(),
                   verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                  horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                  Surface(
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)),
-                    color = badgeBg
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                   ) {
-                    Text(
-                      text = contact.relation,
-                      style = MaterialTheme.typography.labelSmall,
-                      color = badgeTextColor,
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.Bold,
-                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+                    Surface(
+                      modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { contactToConvert = contact },
+                      color = badgeBg
+                    ) {
+                      Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                      ) {
+                        Text(
+                          text = contact.relation,
+                          style = MaterialTheme.typography.labelSmall,
+                          color = badgeTextColor,
+                          fontSize = 11.sp,
+                          fontWeight = FontWeight.Bold
+                        )
+                        Icon(
+                          imageVector = Icons.Default.SwapHoriz,
+                          contentDescription = "Convert Role",
+                          tint = badgeTextColor,
+                          modifier = Modifier.size(13.dp)
+                        )
+                      }
+                    }
+
+                    if (eventsCount > 0) {
+                      Text(
+                        text = if (language == "bn") "• $eventsCount টি ইভেন্টে আমন্ত্রিত" else "• Invited to $eventsCount event${if (eventsCount > 1) "s" else ""}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = DeepPlum,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                      )
+                    }
                   }
 
-                  if (eventsCount > 0) {
-                    Text(
-                      text = if (language == "bn") "• $eventsCount টি ইভেন্টে আমন্ত্রিত" else "• Invited to $eventsCount event${if (eventsCount > 1) "s" else ""}",
-                      style = MaterialTheme.typography.labelSmall,
-                      color = DeepPlum,
-                      fontSize = 11.5.sp,
-                      fontWeight = FontWeight.Medium,
-                      maxLines = 1,
-                      overflow = TextOverflow.Ellipsis
-                    )
+                  // Quick Convert Role Button
+                  Surface(
+                    modifier = Modifier
+                      .clip(RoundedCornerShape(12.dp))
+                      .clickable { contactToConvert = contact }
+                      .testTag("convert_role_button_${contact.id}"),
+                    color = DeepPlum.copy(alpha = 0.08f)
+                  ) {
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.Default.SwapHoriz,
+                        contentDescription = "Convert",
+                        tint = DeepPlum,
+                        modifier = Modifier.size(13.dp)
+                      )
+                      Text(
+                        text = if (language == "bn") "রোল রূপান্তর" else "Convert Role",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = DeepPlum,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold
+                      )
+                    }
                   }
                 }
               }
@@ -1016,6 +1082,134 @@ fun ContactsScreen(
       dismissButton = {
         TextButton(onClick = { contactToEdit = null }) {
           Text("Cancel", color = TextMuted)
+        }
+      }
+    )
+  }
+
+  // Dialog for Converting Member Role (e.g. Family -> Friend, Vendor -> Family, etc.)
+  if (contactToConvert != null) {
+    val target = contactToConvert!!
+    var selectedCategory by remember(target) { mutableStateOf(target.relation) }
+    var vendorNote by remember(target) { mutableStateOf(target.note) }
+    val categories = listOf("Family", "Friend", "Vendor", "Colleague", "Other")
+
+    AlertDialog(
+      onDismissRequest = { contactToConvert = null },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Default.SwapHoriz,
+            contentDescription = null,
+            tint = DeepPlum,
+            modifier = Modifier.size(24.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = if (language == "bn") "মেম্বার রোল রূপান্তর (Convert)" else "Convert Member Role",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+          )
+        }
+      },
+      text = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+          Text(
+            text = if (language == "bn")
+              "${target.name}-এর বর্তমান রোল: ${target.relation}\nনতুন রোল নির্বাচন করুন:"
+            else
+              "Current role for ${target.name}: ${target.relation}\nSelect new role:",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurface
+          )
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          categories.forEach { cat ->
+            val isSelected = selectedCategory.equals(cat, ignoreCase = true)
+            val catLabelBn = when (cat) {
+              "Family" -> "পরিবার (Family)"
+              "Friend" -> "বন্ধু (Friend)"
+              "Vendor" -> "ভেন্ডর (Vendor)"
+              "Colleague" -> "সহকর্মী (Colleague)"
+              else -> "অন্যান্য (Other)"
+            }
+
+            Surface(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { selectedCategory = cat },
+              color = if (isSelected) DeepPlum.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+              border = androidx.compose.foundation.BorderStroke(
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = if (isSelected) DeepPlum else BorderSubtle
+              )
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                Text(
+                  text = if (language == "bn") catLabelBn else cat,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isSelected) DeepPlum else MaterialTheme.colorScheme.onSurface,
+                  fontSize = 13.5.sp
+                )
+                if (isSelected) {
+                  Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = DeepPlum,
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
+              }
+            }
+          }
+
+          if (selectedCategory.equals("Vendor", ignoreCase = true)) {
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedTextField(
+              value = vendorNote,
+              onValueChange = { vendorNote = it },
+              label = { Text(if (language == "bn") "ভেন্ডর সার্ভিস/নোট (ঐচ্ছিক)" else "Vendor Service / Note (Optional)") },
+              placeholder = { Text("e.g. Photography, Catering, Stage Decor") },
+              singleLine = true,
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth()
+            )
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            val updatedContact = target.copy(
+              relation = selectedCategory.trim(),
+              note = if (selectedCategory.equals("Vendor", ignoreCase = true) && vendorNote.isBlank()) "Vendor Service" else vendorNote.trim()
+            )
+            onUpdateContact(updatedContact)
+            val msg = if (language == "bn")
+              "${target.name}-এর রোল সফলভাবে '${selectedCategory}'-এ রূপান্তর করা হয়েছে!"
+            else
+              "Successfully converted ${target.name} to ${selectedCategory}!"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            contactToConvert = null
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = DeepPlum),
+          modifier = Modifier.testTag("convert_role_confirm_button")
+        ) {
+          Text(if (language == "bn") "রূপান্তর করুন" else "Convert Role")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { contactToConvert = null }) {
+          Text(if (language == "bn") "বাতিল" else "Cancel", color = TextMuted)
         }
       }
     )

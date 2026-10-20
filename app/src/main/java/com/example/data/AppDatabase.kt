@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
     AppSettingsEntity::class,
     CateringPlanEntity::class
   ],
-  version = 10,
+  version = 12,
   exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

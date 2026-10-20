@@ -14,6 +14,7 @@ import com.example.data.model.EventEntity
 import com.example.data.model.ExpenseEntity
 import com.example.data.model.UserEntity
 import com.example.data.repository.EventRepository
+import com.example.service.LocalEventReminderReceiver
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -81,9 +82,11 @@ data class CateringEstimate(
 class EventViewModel(application: Application) : AndroidViewModel(application) {
 
   private val repository: EventRepository
+  val appDatabase: AppDatabase
 
   init {
     val db = AppDatabase.getDatabase(application, viewModelScope)
+    appDatabase = db
     repository = EventRepository(db)
     viewModelScope.launch {
       repository.ensureDataInitialized()
@@ -224,22 +227,25 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     EventBudgetSummary(0.0, 0.0, 0.0, 0f, emptyList())
   )
 
-  // Guest calculations for selected event
-  val selectedEventGuestSummary: StateFlow<EventGuestSummary> = selectedEventGuests
-    .combine(flowOf(Unit)) { guests, _ ->
-      EventGuestSummary(
-        totalInvited = guests.size,
-        confirmed = guests.count { it.status == "Confirmed" },
-        called = guests.count { it.status == "Called" },
-        notCalled = guests.count { it.status == "Not Called" },
-        declined = guests.count { it.status == "Declined" }
-      )
-    }
-    .stateIn(
-      viewModelScope,
-      SharingStarted.WhileSubscribed(5000),
-      EventGuestSummary(0, 0, 0, 0, 0)
+  // Guest calculations for selected event (excluding Vendors so vendors are not counted as dining guests)
+  val selectedEventGuestSummary: StateFlow<EventGuestSummary> = combine(
+    selectedEventGuests,
+    allContacts
+  ) { guests, contacts ->
+    val vendorIds = contacts.filter { it.relation.equals("Vendor", ignoreCase = true) }.map { it.id }.toSet()
+    val nonVendorGuests = guests.filter { !vendorIds.contains(it.contactId) }
+    EventGuestSummary(
+      totalInvited = nonVendorGuests.size,
+      confirmed = nonVendorGuests.count { it.status == "Confirmed" },
+      called = nonVendorGuests.count { it.status == "Called" },
+      notCalled = nonVendorGuests.count { it.status == "Not Called" },
+      declined = nonVendorGuests.count { it.status == "Declined" }
     )
+  }.stateIn(
+    viewModelScope,
+    SharingStarted.WhileSubscribed(5000),
+    EventGuestSummary(0, 0, 0, 0, 0)
+  )
 
   // Catering Plan & Estimation for selected event
   val selectedCateringPlan: StateFlow<CateringPlanEntity?> = _selectedEventId
@@ -250,9 +256,12 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
 
   val cateringEstimate: StateFlow<CateringEstimate> = combine(
     selectedEventGuests,
+    allContacts,
     selectedCateringPlan
-  ) { guests, plan ->
-    val confirmedCount = guests.count { it.status.equals("Confirmed", ignoreCase = true) }
+  ) { guests, contacts, plan ->
+    val vendorIds = contacts.filter { it.relation.equals("Vendor", ignoreCase = true) }.map { it.id }.toSet()
+    val nonVendorGuests = guests.filter { !vendorIds.contains(it.contactId) }
+    val confirmedCount = nonVendorGuests.count { it.status.equals("Confirmed", ignoreCase = true) }
     val perPlate = plan?.perPlateCost ?: 0.0
     val buffer = plan?.bufferPercent ?: 10
     val bufferPlates = if (confirmedCount > 0) {
@@ -357,6 +366,75 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
       )
       val newId = repository.insertEvent(newEvent)
       _selectedEventId.value = newId
+
+      // Auto-create category-specific smart checklist templates (ব্যবহারকারীর সময় বাঁচানোর জন্য)
+      val defaultTasks = when (category.lowercase().trim()) {
+        "wedding" -> listOf(
+          "Book Community Center / Hall" to "Venue",
+          "Finalize Catering & Food Menu" to "Catering",
+          "Stage Decoration & Lighting" to "Decoration",
+          "Hire Photographer & Videographer" to "Photography",
+          "Wedding Dress & Attire Shopping" to "Attire",
+          "Print & Send Wedding Invitations" to "Invitations",
+          "Buy Gifts & Sweets for Guests" to "Gifts"
+        )
+        "birthday" -> listOf(
+          "Order Birthday Cake" to "Catering",
+          "Theme Decoration & Balloons" to "Decoration",
+          "Prepare Guest List & Send Invites" to "Invitations",
+          "Arrange Snacks & Beverage" to "Catering",
+          "Buy Birthday Outfit & Props" to "Attire",
+          "Prepare Return Gifts / Favors" to "Gifts"
+        )
+        "aqiqah" -> listOf(
+          "Cattle / Goat Arrangement for Aqiqah" to "Religious",
+          "Book Venue or Arrange Home Setup" to "Venue",
+          "Select Catering Menu & Sweets" to "Catering",
+          "Guest Invitations & Phone Calls" to "Invitations",
+          "Baby Outfit & Photography Setup" to "Photography",
+          "Charity & Distribution to Needy" to "Charity"
+        )
+        "corporate" -> listOf(
+          "Book Conference Hall / Seminar Room" to "Venue",
+          "Sound System & Projector Setup" to "AV Setup",
+          "Finalize Speaker & Guest List" to "Guests",
+          "Banner, Standee & Badge Printing" to "Branding",
+          "Arrange Lunch & High-Tea Catering" to "Catering",
+          "Distribute Event Schedule to Attendees" to "Schedule"
+        )
+        "eid" -> listOf(
+          "Eid Shopping & Special Outfits" to "Attire",
+          "Prepare Eid Special Menu & Groceries" to "Catering",
+          "Home Decoration & Cleaning" to "Decor",
+          "Invite Relatives & Friends" to "Invitations",
+          "Arrange Eidi / Gifts for Children" to "Gifts"
+        )
+        else -> listOf(
+          "Finalize Venue & Date" to "Venue",
+          "Prepare Guest List" to "Invitations",
+          "Plan Food & Refreshments" to "Catering",
+          "Arrange Necessary Event Logistics" to "Logistics"
+        )
+      }
+
+      defaultTasks.forEach { (taskTitle, _) ->
+        repository.insertChecklistItem(
+          ChecklistItemEntity(
+            eventId = newId,
+            title = taskTitle,
+            dueDate = dateFormatted,
+            isDone = false
+          )
+        )
+      }
+
+      // Schedule local offline reminder for upcoming event
+      try {
+        LocalEventReminderReceiver.scheduleEventReminder(getApplication(), newEvent.copy(id = newId))
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+
       onSuccess(newId)
     }
   }
@@ -409,6 +487,26 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
       )
       repository.updateEvent(updatedEvent)
       _selectedEventId.value = eventId
+
+      // Reschedule local reminder
+      try {
+        LocalEventReminderReceiver.scheduleEventReminder(getApplication(), updatedEvent)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+
+      onSuccess()
+    }
+  }
+
+  fun updatePlannedBudget(eventId: Long, newBudget: Double, onSuccess: () -> Unit = {}) {
+    viewModelScope.launch {
+      val existing = allEvents.value.firstOrNull { it.id == eventId }
+        ?: repository.getEventById(eventId).firstOrNull()
+        ?: return@launch
+
+      val updatedEvent = existing.copy(plannedBudget = newBudget)
+      repository.updateEvent(updatedEvent)
       onSuccess()
     }
   }
@@ -416,6 +514,11 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
   fun deleteEvent(event: EventEntity, onDeleted: () -> Unit) {
     viewModelScope.launch {
       repository.deleteEvent(event)
+      try {
+        LocalEventReminderReceiver.cancelEventReminder(getApplication(), event.id)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
       val next = allEvents.value.firstOrNull { it.id != event.id }
       _selectedEventId.value = next?.id
       onDeleted()
@@ -429,7 +532,13 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun addChecklistItem(title: String, dueDate: String) {
+  fun updateChecklistItem(item: ChecklistItemEntity) {
+    viewModelScope.launch {
+      repository.updateChecklistItem(item)
+    }
+  }
+
+  fun addChecklistItem(title: String, dueDate: String, category: String = "General") {
     val currentId = _selectedEventId.value ?: return
     viewModelScope.launch {
       repository.insertChecklistItem(
@@ -437,7 +546,8 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
           eventId = currentId,
           title = title,
           dueDate = dueDate,
-          isDone = false
+          isDone = false,
+          category = category
         )
       )
     }
@@ -674,20 +784,24 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
   ) {
     viewModelScope.launch {
       val colors = listOf("#4A1030", "#1F6E52", "#D4AF6A", "#285496", "#C85A32")
+      val vendorRoles = setOf("catering", "photography", "decoration", "stage", "music/dj", "venue", "makeup", "transport", "vendor", "sound & music")
       contacts.forEach { (name, phone, category) ->
-        val safeCategory = when (category.trim().lowercase()) {
-          "vendor" -> "Vendor"
-          "friend" -> "Friend"
-          "family" -> "Family"
+        val rawCat = category.trim().lowercase()
+        val isVendorType = vendorRoles.contains(rawCat)
+        val safeCategory = when {
+          isVendorType -> "Vendor"
+          rawCat == "friend" -> "Friend"
+          rawCat == "family" -> "Family"
           else -> category.trim().ifBlank { "Other" }
         }
+        val noteText = if (isVendorType && rawCat != "vendor") category.trim() else "Imported contact"
         val newId = repository.insertContact(
           ContactEntity(
             userId = currentUser.value?.id ?: 1L,
             name = name.trim(),
             phone = phone.trim(),
             relation = safeCategory,
-            note = "Imported contact",
+            note = noteText,
             avatarColorHex = colors.random()
           )
         )
@@ -720,6 +834,12 @@ class EventViewModel(application: Application) : AndroidViewModel(application) {
   fun updateGuestStatus(eventId: Long, contactId: Long, newStatus: String) {
     viewModelScope.launch {
       repository.updateGuestStatus(eventId, contactId, newStatus)
+    }
+  }
+
+  fun markInviteSent(eventId: Long, contactId: Long, isSent: Boolean = true) {
+    viewModelScope.launch {
+      repository.markInviteSent(eventId, contactId, isSent)
     }
   }
 
